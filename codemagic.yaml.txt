@@ -1,0 +1,36 @@
+workflows:
+  wood-pro-android:
+    name: Edile Pro v9.7.0 Android
+    max_build_duration: 60
+    environment:
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+    cache:
+      cache_paths:
+        - $FLUTTER_ROOT/.pub-cache
+    scripts:
+      - name: Create missing Android files
+        script: |
+          flutter create . --project-name preventivo_edile_pro
+      - name: Fix Android SDK version
+        script: |
+          sed -i 's/compileSdk.*/compileSdk = 36/' android/app/build.gradle.kts || true
+          sed -i 's/compileSdk .*/compileSdk 36/' android/app/build.gradle || true
+          sed -i 's/targetSdk.*/targetSdk = 36/' android/app/build.gradle.kts || true
+          sed -i 's/targetSdk .*/targetSdk 36/' android/app/build.gradle || true
+      - name: Get Flutter packages
+        script: |
+          flutter pub get
+      - name: Build APK Release
+        script: |
+          flutter build apk --release --build-name=9.7.0 --build-number=1
+    artifacts:
+      - build/app/outputs/flutter-apk/app-release.apk
+    publishing:
+      email:
+        recipients:
+          - gabriele2180@gmail.com
+        notify:
+          success: true
+          failure: true
