@@ -4,6 +4,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:pdf/pdf.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:printing/printing.dart';
 
 void main() => runApp(MaterialApp(home: PreventivoEdile(), debugShowCheckedModeBanner: false));
 
@@ -84,7 +85,7 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
                   });
                 },
               ),
-              TextField(controller: qtaController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Quantità (${selezionata!.unita})')),
+              TextField(controller: qtaController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Quantita (${selezionata!.unita})')),
               TextField(controller: prezzoController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Prezzo € / ${selezionata!.unita}')),
             ],
           ),
@@ -107,10 +108,18 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
     );
   }
 
+  // STESSA CORREZIONE DELLA WOOD PRO - font Roboto per far vedere € pulito
   Future<pw.Document> _creaPdf() async {
+    final font = await PdfGoogleFonts.robotoRegular();
+    final fontBold = await PdfGoogleFonts.robotoBold();
+
     final pdf = pw.Document();
     pdf.addPage(
       pw.MultiPage(
+        theme: pw.ThemeData.withFont(
+          base: font,
+          bold: fontBold,
+        ),
         build: (ctx) => [
           pw.Text('DBG - EDILE', style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 8),
@@ -125,14 +134,14 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
             data: righe.map((r) => [
               r.voce.nome,
               '${r.quantita.toStringAsFixed(2)} ${r.voce.unita}',
-              '${r.voce.prezzo.toStringAsFixed(2)}€',
-              '${r.totale.toStringAsFixed(2)}€',
+              '${r.voce.prezzo.toStringAsFixed(2)} €',
+              '${r.totale.toStringAsFixed(2)} €',
             ]).toList(),
           ),
           pw.SizedBox(height: 16),
-          pw.Text('TOTALE: ${totale.toStringAsFixed(2)}€', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
-          pw.Text('ACCONTO 40% DA VERSARE: ${acconto.toStringAsFixed(2)}€'),
-          pw.Text('SALDO A LAVORO FINITO: ${saldo.toStringAsFixed(2)}€'),
+          pw.Text('TOTALE: ${totale.toStringAsFixed(2)} €', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
+          pw.Text('ACCONTO 40% DA VERSARE: ${acconto.toStringAsFixed(2)} €'),
+          pw.Text('SALDO A LAVORO FINITO: ${saldo.toStringAsFixed(2)} €'),
           pw.SizedBox(height: 20),
           pw.Text('Grazie per aver scelto DBG.', style: pw.TextStyle(fontSize: 10)),
         ],
@@ -154,7 +163,7 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
 
     await Share.shareXFiles(
       [XFile(file.path)],
-      text: 'Ecco il tuo preventivo DBG Edile - N. $numero\nTotale: ${totale.toStringAsFixed(2)}€',
+      text: 'Ecco il tuo preventivo DBG Edile - N. $numero\nTotale: ${totale.toStringAsFixed(2)} €',
     );
   }
 
@@ -178,11 +187,11 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
                   final r = righe[i];
                   return ListTile(
                     title: Text(r.voce.nome),
-                    subtitle: Text('${r.quantita} ${r.voce.unita} x ${r.voce.prezzo}€'),
+                    subtitle: Text('${r.quantita} ${r.voce.unita} x ${r.voce.prezzo} €'),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text('${r.totale.toStringAsFixed(2)}€', style: TextStyle(fontWeight: FontWeight.bold)),
+                        Text('${r.totale.toStringAsFixed(2)} €', style: TextStyle(fontWeight: FontWeight.bold)),
                         IconButton(icon: Icon(Icons.delete, color: Colors.red), onPressed: () => setState(() => righe.removeAt(i))),
                       ],
                     ),
@@ -191,9 +200,9 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
               ),
             ),
             Divider(),
-            Text('TOTALE: ${totale.toStringAsFixed(2)}€', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-            Text('ACCONTO 40%: ${acconto.toStringAsFixed(2)}€'),
-            Text('SALDO: ${saldo.toStringAsFixed(2)}€'),
+            Text('TOTALE: ${totale.toStringAsFixed(2)} €', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            Text('ACCONTO 40%: ${acconto.toStringAsFixed(2)} €'),
+            Text('SALDO: ${saldo.toStringAsFixed(2)} €'),
             SizedBox(height: 10),
             SizedBox(
               width: double.infinity,
