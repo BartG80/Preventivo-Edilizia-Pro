@@ -20,7 +20,6 @@ class Riga {
   double get totale => voce.prezzo * quantita;
 }
 
-// PESO FERRO kg/m per diametro
 double pesoFerro(int diametro) {
   switch (diametro) {
     case 6: return 0.222;
@@ -85,6 +84,7 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
   List<Riga> righe = [];
 
   int progressivo = 1;
+  double aliquotaIva = 10; // 4% prima casa, 10% ristrutturazione, 22% normale
   String get numero {
     final anno = DateTime.now().year;
     return '$anno-${progressivo.toString().padLeft(3, '0')}';
@@ -125,6 +125,31 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
     setState(() {
       progressivo = nuovo;
     });
+  }
+
+  // NUOVO PREVENTIVO: cancella tutto e fa avanzare il numero
+  Future<void> _nuovoPreventivo() async {
+    final conferma = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Nuovo Preventivo?'),
+        content: Text('Cancella cliente e voci e passa al preventivo N. ${DateTime.now().year}-${(progressivo + 1).toString().padLeft(3, '0')}?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Annulla')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: Text('Si, Nuovo')),
+        ],
+      ),
+    );
+    if (conferma != true) return;
+    await _aumentaProgressivo();
+    setState(() {
+      righe.clear();
+      _nomeController.clear();
+      _telefonoController.clear();
+      _indirizzoController.clear();
+      aliquotaIva = 10;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Nuovo preventivo: $numero')));
   }
 
   Future<void> _caricaDatiDitta() async {
@@ -208,10 +233,11 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
   }
 
   double get totale => righe.fold(0, (s, r) => s + r.totale);
-  double get acconto => totale * 0.40;
-  double get saldo => totale - acconto;
+  double get importoIva => totale * aliquotaIva / 100;
+  double get totaleConIva => totale + importoIva;
+  double get acconto => totaleConIva * 0.40;
+  double get saldo => totaleConIva - acconto;
 
-  // CALCOLATORE GABBIA - tu metti le misure, lui fa i kg da solo
   void _calcolaGabbia() async {
     String tipo = 'Gabbia in ferro per travi fonde';
     final lungController = TextEditingController(text: '5');
@@ -272,17 +298,13 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
                 final base = double.tryParse(baseController.text.replaceAll(',', '.')) ?? 30;
                 final alt = double.tryParse(altezzaController.text.replaceAll(',', '.')) ?? 40;
                 final prezzo = double.tryParse(prezzoController.text.replaceAll(',', '.')) ?? 2.2;
-
-                // 1. Tondi longitudinali
                 final metriTondi = nTondi * lung;
                 final kgTondi = metriTondi * pesoFerro(diamTondi);
-                // 2. Staffe: quante + quanto e lunga una staffa
                 final nStaffe = (lung * 100 / passo).ceil() + 1;
-                final perimetroStaffa = ((base + alt) * 2) / 100 + 0.20; // + pieghe
+                final perimetroStaffa = ((base + alt) * 2) / 100 + 0.20;
                 final metriStaffe = nStaffe * perimetroStaffa;
                 final kgStaffe = metriStaffe * pesoFerro(diamStaffe);
                 final kgTotali = kgTondi + kgStaffe;
-
                 setState(() {
                   righe.add(Riga(voce: Voce(nome: tipo, unita: 'kg', prezzo: prezzo), quantita: double.parse(kgTotali.toStringAsFixed(1))));
                 });
@@ -376,7 +398,9 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
             ]).toList(),
           ),
           pw.SizedBox(height: 16),
-          pw.Text('TOTALE: ${totale.toStringAsFixed(2)} Euro', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
+          pw.Text('IMPONIBILE: ${totale.toStringAsFixed(2)} Euro', style: pw.TextStyle(fontSize: 13)),
+          pw.Text('IVA ${aliquotaIva.toStringAsFixed(0)}%: ${importoIva.toStringAsFixed(2)} Euro', style: pw.TextStyle(fontSize: 13)),
+          pw.Text('TOTALE IVA INCLUSA: ${totaleConIva.toStringAsFixed(2)} Euro', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
           pw.Text('ACCONTO 40% DA VERSARE: ${acconto.toStringAsFixed(2)} Euro'),
           pw.Text('SALDO A LAVORO FINITO: ${saldo.toStringAsFixed(2)} Euro'),
           pw.SizedBox(height: 20),
@@ -384,8 +408,8 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
           pw.Text('NOTE LEGALI E CONDIZIONI', style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 6),
           pw.Text('1. Il presente preventivo ha validita di 30 giorni dalla data di emissione.', style: pw.TextStyle(fontSize: 9)),
-          pw.Text('2. I prezzi indicati sono IVA esclusa, salvo diversa indicazione.', style: pw.TextStyle(fontSize: 9)),
-          pw.Text('3. Per conferma dell\'ordine e richiesto il versamento di un acconto pari al 40% dell\'importo totale.', style: pw.TextStyle(fontSize: 9)),
+          pw.Text('2. Prezzi IVA esclusa. IVA applicata al ${aliquotaIva.toStringAsFixed(0)}% come da normativa vigente.', style: pw.TextStyle(fontSize: 9)),
+          pw.Text('3. Per conferma dell\'ordine e richiesto il versamento di un acconto pari al 40% dell\'importo totale IVA inclusa.', style: pw.TextStyle(fontSize: 9)),
           pw.Text('4. Il saldo dovra essere corrisposto a lavoro finito, prima della consegna.', style: pw.TextStyle(fontSize: 9)),
           pw.Text('5. Eventuali varianti, modifiche o lavori extra richiesti in corso d\'opera saranno conteggiati a parte e dovranno essere approvati per iscritto.', style: pw.TextStyle(fontSize: 9)),
           pw.Text('6. I materiali sono quelli indicati nel preventivo. Eventuali sostituzioni saranno concordate con il cliente.', style: pw.TextStyle(fontSize: 9)),
@@ -419,7 +443,7 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
     await file.writeAsBytes(await pdf.save());
     await Share.shareXFiles(
       [XFile(file.path)],
-      text: 'Ecco il tuo preventivo $ragioneSociale - N. $numeroCorrente\nTotale: ${totale.toStringAsFixed(2)} Euro',
+      text: 'Ecco il tuo preventivo $ragioneSociale - N. $numeroCorrente\nImponibile: ${totale.toStringAsFixed(2)} Euro + IVA ${aliquotaIva.toStringAsFixed(0)}% = Totale: ${totaleConIva.toStringAsFixed(2)} Euro',
     );
     await _aumentaProgressivo();
     setState(() {
@@ -427,6 +451,7 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
       _nomeController.clear();
       _telefonoController.clear();
       _indirizzoController.clear();
+      aliquotaIva = 10;
     });
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Preventivo $numeroCorrente inviato. Prossimo: $numero')));
   }
@@ -439,6 +464,7 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
         backgroundColor: Colors.brown[800],
         actions: [
           IconButton(icon: Icon(Icons.settings), onPressed: _apriImpostazioni, tooltip: 'Dati Ditta'),
+          IconButton(icon: Icon(Icons.refresh), onPressed: _nuovoPreventivo, tooltip: 'Nuovo Preventivo'),
         ],
       ),
       body: Padding(
@@ -485,18 +511,52 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
               ),
             ),
             Divider(),
-            Text('TOTALE: ${totale.toStringAsFixed(2)} Euro', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(color: Colors.brown[50], borderRadius: BorderRadius.circular(8)),
+              child: Row(
+                children: [
+                  Text('IVA: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                  DropdownButton<double>(
+                    value: aliquotaIva,
+                    items: [
+                      DropdownMenuItem(value: 4.0, child: Text('4% - Prima casa')),
+                      DropdownMenuItem(value: 10.0, child: Text('10% - Ristrutturazione')),
+                      DropdownMenuItem(value: 22.0, child: Text('22% - Normale')),
+                    ],
+                    onChanged: (v) => setState(() => aliquotaIva = v!),
+                  ),
+                  Spacer(),
+                  Text('IVA: ${importoIva.toStringAsFixed(2)} €', style: TextStyle(fontWeight: FontWeight.bold)),
+                ],
+              ),
+            ),
+            SizedBox(height: 6),
+            Text('IMPONIBILE: ${totale.toStringAsFixed(2)} Euro', style: TextStyle(fontSize: 14)),
+            Text('TOTALE IVA INCLUSA: ${totaleConIva.toStringAsFixed(2)} Euro', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
             Text('ACCONTO 40%: ${acconto.toStringAsFixed(2)} Euro'),
             Text('SALDO: ${saldo.toStringAsFixed(2)} Euro'),
             SizedBox(height: 10),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: _condividiWhatsApp,
-                icon: Icon(Icons.share),
-                label: Text('Condividi su WhatsApp'),
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: EdgeInsets.symmetric(vertical: 14)),
-              ),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _nuovoPreventivo,
+                    icon: Icon(Icons.refresh),
+                    label: Text('Nuovo'),
+                  ),
+                ),
+                SizedBox(width: 8),
+                Expanded(
+                  flex: 2,
+                  child: ElevatedButton.icon(
+                    onPressed: _condividiWhatsApp,
+                    icon: Icon(Icons.share),
+                    label: Text('Condividi su WhatsApp'),
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: EdgeInsets.symmetric(vertical: 14)),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
