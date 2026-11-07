@@ -56,14 +56,13 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
   final _indirizzoController = TextEditingController();
   List<Riga> righe = [];
 
-  // PROGRESSIVO PREVENTIVO - aumenta in automatico a ogni invio
   int progressivo = 1;
   String get numero {
     final anno = DateTime.now().year;
     return '$anno-${progressivo.toString().padLeft(3, '0')}';
   }
 
-  // DATI DITTA
+  // NESSUN NOME PREIMPOSTATO - la ditta lo inserisce lei
   String ragioneSociale = '';
   String indirizzoDitta = '';
   String piva = '';
@@ -84,7 +83,6 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
     final annoOra = DateTime.now().year;
     setState(() {
       if (annoSalvato != annoOra) {
-        // Anno nuovo -> riparte da 001
         progressivo = 1;
       } else {
         progressivo = prefs.getInt('progressivo') ?? 1;
@@ -146,7 +144,7 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
             children: [
               Text('Questi dati usciranno in automatico in tutti i PDF.', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
               SizedBox(height: 12),
-              TextField(controller: cRagione, decoration: InputDecoration(labelText: 'Ragione Sociale *', hintText: 'Es. DBG EDILE SRL')),
+              TextField(controller: cRagione, decoration: InputDecoration(labelText: 'Ragione Sociale *', hintText: 'Es. La tua Ditta SRL')),
               TextField(controller: cIndirizzo, decoration: InputDecoration(labelText: 'Indirizzo *', hintText: 'Via Roma 10')),
               TextField(controller: cCitta, decoration: InputDecoration(labelText: 'Citta *', hintText: 'Es. Bergamo')),
               TextField(controller: cPiva, decoration: InputDecoration(labelText: 'P.IVA *', hintText: 'Es. 01234567890')),
@@ -310,8 +308,6 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
       [XFile(file.path)],
       text: 'Ecco il tuo preventivo $ragioneSociale - N. $numeroCorrente\nTotale: ${totale.toStringAsFixed(2)} €',
     );
-
-    // AUMENTA IN AUTOMATICO SOLO DOPO L'INVIO
     await _aumentaProgressivo();
     setState(() {
       righe.clear();
@@ -326,7 +322,7 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(ragioneSociale.isEmpty ? 'DBG Edile - Preventivo $numero' : '$ragioneSociale - $numero'),
+        title: Text(ragioneSociale.isEmpty ? 'Preventivo $numero' : '$ragioneSociale - $numero'),
         backgroundColor: Colors.brown[800],
         actions: [
           IconButton(icon: Icon(Icons.settings), onPressed: _apriImpostazioni, tooltip: 'Dati Ditta'),
