@@ -22,15 +22,21 @@ class Riga {
 
 final List<Voce> LISTINO = [
   Voce(nome: 'Fondazioni', unita: 'ml', prezzo: 120),
+  Voce(nome: 'Calcestruzzo fondazioni', unita: 'mc', prezzo: 140),
   Voce(nome: 'Massetto', unita: 'mq', prezzo: 25),
+  Voce(nome: 'Calcestruzzo massetto', unita: 'mc', prezzo: 130),
   Voce(nome: 'Armatura pilastri', unita: 'pz', prezzo: 350),
+  Voce(nome: 'Calcestruzzo pilastri', unita: 'mc', prezzo: 160),
   Voce(nome: 'Armatura travi fonde', unita: 'ml', prezzo: 180),
   Voce(nome: 'Armatura travi piatte', unita: 'ml', prezzo: 160),
   Voce(nome: 'Muratura', unita: 'mq', prezzo: 55),
   Voce(nome: 'Armatura solaio', unita: 'mq', prezzo: 45),
+  Voce(nome: 'Calcestruzzo solaio', unita: 'mc', prezzo: 150),
   Voce(nome: 'Armatura scala', unita: 'pz', prezzo: 450),
   Voce(nome: 'Armatura balconi', unita: 'mq', prezzo: 40),
   Voce(nome: 'Armatura tetto', unita: 'mq', prezzo: 50),
+  Voce(nome: 'Calcestruzzo tetto', unita: 'mc', prezzo: 150),
+  Voce(nome: 'Calcestruzzo generico', unita: 'mc', prezzo: 140),
   Voce(nome: 'Massetto a secco (sabbia e cemento)', unita: 'mq', prezzo: 30),
   Voce(nome: 'Intonaco', unita: 'mq', prezzo: 22),
   Voce(nome: 'Rasatura', unita: 'mq', prezzo: 12),
@@ -62,7 +68,6 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
     return '$anno-${progressivo.toString().padLeft(3, '0')}';
   }
 
-  // NESSUN NOME PREIMPOSTATO - la ditta lo inserisce lei
   String ragioneSociale = '';
   String indirizzoDitta = '';
   String piva = '';
@@ -209,7 +214,7 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
                 },
               ),
               TextField(controller: qtaController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Quantita (${selezionata!.unita})')),
-              TextField(controller: prezzoController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Prezzo € / ${selezionata!.unita}')),
+              TextField(controller: prezzoController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Prezzo Euro / ${selezionata!.unita}')),
             ],
           ),
           actions: [
@@ -258,14 +263,14 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
             data: righe.map((r) => [
               r.voce.nome,
               '${r.quantita.toStringAsFixed(2)} ${r.voce.unita}',
-              '${r.voce.prezzo.toStringAsFixed(2)} €',
-              '${r.totale.toStringAsFixed(2)} €',
+              '${r.voce.prezzo.toStringAsFixed(2)} Euro',
+              '${r.totale.toStringAsFixed(2)} Euro',
             ]).toList(),
           ),
           pw.SizedBox(height: 16),
-          pw.Text('TOTALE: ${totale.toStringAsFixed(2)} €', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
-          pw.Text('ACCONTO 40% DA VERSARE: ${acconto.toStringAsFixed(2)} €'),
-          pw.Text('SALDO A LAVORO FINITO: ${saldo.toStringAsFixed(2)} €'),
+          pw.Text('TOTALE: ${totale.toStringAsFixed(2)} Euro', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
+          pw.Text('ACCONTO 40% DA VERSARE: ${acconto.toStringAsFixed(2)} Euro'),
+          pw.Text('SALDO A LAVORO FINITO: ${saldo.toStringAsFixed(2)} Euro'),
           pw.SizedBox(height: 20),
           pw.Divider(),
           pw.Text('NOTE LEGALI E CONDIZIONI', style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
@@ -306,7 +311,7 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
     await file.writeAsBytes(await pdf.save());
     await Share.shareXFiles(
       [XFile(file.path)],
-      text: 'Ecco il tuo preventivo $ragioneSociale - N. $numeroCorrente\nTotale: ${totale.toStringAsFixed(2)} €',
+      text: 'Ecco il tuo preventivo $ragioneSociale - N. $numeroCorrente\nTotale: ${totale.toStringAsFixed(2)} Euro',
     );
     await _aumentaProgressivo();
     setState(() {
@@ -337,7 +342,7 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
                 width: double.infinity,
                 padding: EdgeInsets.all(10),
                 color: Colors.orange[100],
-                child: Text('⚙️ Prima volta? Premi l\'ingranaggio in alto e inserisci i dati della tua ditta.', style: TextStyle(fontSize: 13)),
+                child: Text('Prima volta? Premi l\'ingranaggio in alto e inserisci i dati della tua ditta.', style: TextStyle(fontSize: 13)),
               ),
             Text('Preventivo N. $numero', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.brown[800])),
             SizedBox(height: 6),
@@ -353,11 +358,11 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
                   final r = righe[i];
                   return ListTile(
                     title: Text(r.voce.nome),
-                    subtitle: Text('${r.quantita} ${r.voce.unita} x ${r.voce.prezzo} €'),
+                    subtitle: Text('${r.quantita} ${r.voce.unita} x ${r.voce.prezzo} Euro'),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text('${r.totale.toStringAsFixed(2)} €', style: TextStyle(fontWeight: FontWeight.bold)),
+                        Text('${r.totale.toStringAsFixed(2)} Euro', style: TextStyle(fontWeight: FontWeight.bold)),
                         IconButton(icon: Icon(Icons.delete, color: Colors.red), onPressed: () => setState(() => righe.removeAt(i))),
                       ],
                     ),
@@ -366,9 +371,9 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
               ),
             ),
             Divider(),
-            Text('TOTALE: ${totale.toStringAsFixed(2)} €', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-            Text('ACCONTO 40%: ${acconto.toStringAsFixed(2)} €'),
-            Text('SALDO: ${saldo.toStringAsFixed(2)} €'),
+            Text('TOTALE: ${totale.toStringAsFixed(2)} Euro', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            Text('ACCONTO 40%: ${acconto.toStringAsFixed(2)} Euro'),
+            Text('SALDO: ${saldo.toStringAsFixed(2)} Euro'),
             SizedBox(height: 10),
             SizedBox(
               width: double.infinity,
