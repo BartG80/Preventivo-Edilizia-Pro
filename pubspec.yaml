@@ -1,17 +1,23 @@
-name: preventivo_edile_pro
-description: Preventivo Edile Pro
-version: 9.7.0+1
+name: dbg_edile
+description: "Preventivi DBG Edile - stessa base Wood Pro"
+publish_to: 'none'
+version: 1.0.0+1
+
 environment:
-  sdk: '>=3.2.0 <4.0.0'
+  sdk: '>=3.0.0 <4.0.0'
+
 dependencies:
   flutter:
     sdk: flutter
-  provider: ^6.1.1
-  pdf: ^3.10.7
-  printing: ^5.11.1
-  shared_preferences: ^2.2.2
-  intl: ^0.19.0
-  share_plus: ^11.0.0
-  path_provider: ^2.1.2
+  cupertino_icons: ^1.0.2
+  pdf: ^3.11.0
+  share_plus: ^10.0.0
+  path_provider: ^2.1.5
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
 flutter:
   uses-material-design: true
