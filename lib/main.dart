@@ -5,6 +5,7 @@ import 'package:pdf/pdf.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:printing/printing.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() => runApp(MaterialApp(home: PreventivoEdile(), debugShowCheckedModeBanner: false));
 
@@ -19,7 +20,6 @@ class Riga {
   double get totale => voce.prezzo * quantita;
 }
 
-// LISTINO EDILE - base Wood Pro, solo voci cambiate
 final List<Voce> LISTINO = [
   Voce(nome: 'Fondazioni', unita: 'ml', prezzo: 120),
   Voce(nome: 'Massetto', unita: 'mq', prezzo: 25),
@@ -55,7 +55,132 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
   final _telefonoController = TextEditingController();
   final _indirizzoController = TextEditingController();
   List<Riga> righe = [];
-  String numero = '2026-001';
+
+  // PROGRESSIVO PREVENTIVO - aumenta in automatico a ogni invio
+  int progressivo = 1;
+  String get numero {
+    final anno = DateTime.now().year;
+    return '$anno-${progressivo.toString().padLeft(3, '0')}';
+  }
+
+  // DATI DITTA
+  String ragioneSociale = '';
+  String indirizzoDitta = '';
+  String piva = '';
+  String telefonoDitta = '';
+  String emailDitta = '';
+  String citta = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _caricaDatiDitta();
+    _caricaProgressivo();
+  }
+
+  Future<void> _caricaProgressivo() async {
+    final prefs = await SharedPreferences.getInstance();
+    final annoSalvato = prefs.getInt('annoProgressivo') ?? DateTime.now().year;
+    final annoOra = DateTime.now().year;
+    setState(() {
+      if (annoSalvato != annoOra) {
+        // Anno nuovo -> riparte da 001
+        progressivo = 1;
+      } else {
+        progressivo = prefs.getInt('progressivo') ?? 1;
+      }
+    });
+  }
+
+  Future<void> _aumentaProgressivo() async {
+    final prefs = await SharedPreferences.getInstance();
+    final nuovo = progressivo + 1;
+    await prefs.setInt('progressivo', nuovo);
+    await prefs.setInt('annoProgressivo', DateTime.now().year);
+    setState(() {
+      progressivo = nuovo;
+    });
+  }
+
+  Future<void> _caricaDatiDitta() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      ragioneSociale = prefs.getString('ragione') ?? '';
+      indirizzoDitta = prefs.getString('indirizzo') ?? '';
+      piva = prefs.getString('piva') ?? '';
+      telefonoDitta = prefs.getString('telefonoDitta') ?? '';
+      emailDitta = prefs.getString('email') ?? '';
+      citta = prefs.getString('citta') ?? '';
+    });
+    if (ragioneSociale.isEmpty) {
+      Future.delayed(Duration(milliseconds: 500), () => _apriImpostazioni());
+    }
+  }
+
+  Future<void> _salvaDatiDitta() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('ragione', ragioneSociale);
+    await prefs.setString('indirizzo', indirizzoDitta);
+    await prefs.setString('piva', piva);
+    await prefs.setString('telefonoDitta', telefonoDitta);
+    await prefs.setString('email', emailDitta);
+    await prefs.setString('citta', citta);
+  }
+
+  void _apriImpostazioni() async {
+    final cRagione = TextEditingController(text: ragioneSociale);
+    final cIndirizzo = TextEditingController(text: indirizzoDitta);
+    final cPiva = TextEditingController(text: piva);
+    final cTel = TextEditingController(text: telefonoDitta);
+    final cEmail = TextEditingController(text: emailDitta);
+    final cCitta = TextEditingController(text: citta);
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: Text('Dati della tua Ditta'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Questi dati usciranno in automatico in tutti i PDF.', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+              SizedBox(height: 12),
+              TextField(controller: cRagione, decoration: InputDecoration(labelText: 'Ragione Sociale *', hintText: 'Es. DBG EDILE SRL')),
+              TextField(controller: cIndirizzo, decoration: InputDecoration(labelText: 'Indirizzo *', hintText: 'Via Roma 10')),
+              TextField(controller: cCitta, decoration: InputDecoration(labelText: 'Citta *', hintText: 'Es. Bergamo')),
+              TextField(controller: cPiva, decoration: InputDecoration(labelText: 'P.IVA *', hintText: 'Es. 01234567890')),
+              TextField(controller: cTel, decoration: InputDecoration(labelText: 'Telefono *', hintText: 'Es. 333 1234567')),
+              TextField(controller: cEmail, decoration: InputDecoration(labelText: 'Email *', hintText: 'info@...')),
+            ],
+          ),
+        ),
+        actions: [
+          if (ragioneSociale.isNotEmpty) TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Annulla')),
+          ElevatedButton(
+            onPressed: () {
+              if (cRagione.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Inserisci almeno la Ragione Sociale')));
+                return;
+              }
+              setState(() {
+                ragioneSociale = cRagione.text.trim();
+                indirizzoDitta = cIndirizzo.text.trim();
+                citta = cCitta.text.trim();
+                piva = cPiva.text.trim();
+                telefonoDitta = cTel.text.trim();
+                emailDitta = cEmail.text.trim();
+              });
+              _salvaDatiDitta();
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Dati ditta salvati!')));
+            },
+            child: Text('Salva'),
+          ),
+        ],
+      ),
+    );
+  }
 
   double get totale => righe.fold(0, (s, r) => s + r.totale);
   double get acconto => totale * 0.40;
@@ -108,20 +233,21 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
     );
   }
 
-  // STESSA CORREZIONE DELLA WOOD PRO - font Roboto per far vedere € pulito
   Future<pw.Document> _creaPdf() async {
     final font = await PdfGoogleFonts.robotoRegular();
     final fontBold = await PdfGoogleFonts.robotoBold();
+    final foroText = citta.isNotEmpty ? 'Foro competente: Tribunale di $citta.' : '';
 
     final pdf = pw.Document();
     pdf.addPage(
       pw.MultiPage(
-        theme: pw.ThemeData.withFont(
-          base: font,
-          bold: fontBold,
-        ),
+        theme: pw.ThemeData.withFont(base: font, bold: fontBold),
         build: (ctx) => [
-          pw.Text('DBG - EDILE', style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold)),
+          pw.Text(ragioneSociale.toUpperCase(), style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold)),
+          if (indirizzoDitta.isNotEmpty || citta.isNotEmpty) pw.Text('$indirizzoDitta, $citta', style: pw.TextStyle(fontSize: 10)),
+          if (piva.isNotEmpty) pw.Text('P.IVA $piva', style: pw.TextStyle(fontSize: 10)),
+          if (telefonoDitta.isNotEmpty || emailDitta.isNotEmpty) pw.Text('$telefonoDitta - $emailDitta', style: pw.TextStyle(fontSize: 10)),
+          pw.Divider(),
           pw.SizedBox(height: 8),
           pw.Text('PREVENTIVO N. $numero', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 12),
@@ -143,38 +269,82 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
           pw.Text('ACCONTO 40% DA VERSARE: ${acconto.toStringAsFixed(2)} €'),
           pw.Text('SALDO A LAVORO FINITO: ${saldo.toStringAsFixed(2)} €'),
           pw.SizedBox(height: 20),
-          pw.Text('Grazie per aver scelto DBG.', style: pw.TextStyle(fontSize: 10)),
+          pw.Divider(),
+          pw.Text('NOTE LEGALI E CONDIZIONI', style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
+          pw.SizedBox(height: 6),
+          pw.Text('1. Il presente preventivo ha validita di 30 giorni dalla data di emissione.', style: pw.TextStyle(fontSize: 9)),
+          pw.Text('2. I prezzi indicati sono IVA esclusa, salvo diversa indicazione.', style: pw.TextStyle(fontSize: 9)),
+          pw.Text('3. Per conferma dell\'ordine e richiesto il versamento di un acconto pari al 40% dell\'importo totale.', style: pw.TextStyle(fontSize: 9)),
+          pw.Text('4. Il saldo dovra essere corrisposto a lavoro finito, prima della consegna.', style: pw.TextStyle(fontSize: 9)),
+          pw.Text('5. Eventuali varianti, modifiche o lavori extra richiesti in corso d\'opera saranno conteggiati a parte e dovranno essere approvati per iscritto.', style: pw.TextStyle(fontSize: 9)),
+          pw.Text('6. I materiali sono quelli indicati nel preventivo. Eventuali sostituzioni saranno concordate con il cliente.', style: pw.TextStyle(fontSize: 9)),
+          pw.Text('7. Il presente documento non costituisce fattura. La fattura verra emessa al pagamento secondo normativa vigente.', style: pw.TextStyle(fontSize: 9)),
+          if (foroText.isNotEmpty) pw.Text('8. $foroText', style: pw.TextStyle(fontSize: 9)),
+          pw.SizedBox(height: 16),
+          pw.Text('Firma per accettazione: ___________________________', style: pw.TextStyle(fontSize: 10)),
+          pw.SizedBox(height: 8),
+          pw.Text('Data: ____ / ____ / ________', style: pw.TextStyle(fontSize: 10)),
+          pw.SizedBox(height: 16),
+          pw.Text('Grazie per aver scelto $ragioneSociale.', style: pw.TextStyle(fontSize: 10)),
         ],
       ),
     );
     return pdf;
   }
 
-  // UGUALE ALLA WOOD PRO - condivisione diretta
   Future<void> _condividiWhatsApp() async {
     if (righe.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Aggiungi almeno una voce')));
       return;
     }
+    if (ragioneSociale.isEmpty) {
+      _apriImpostazioni();
+      return;
+    }
+    final numeroCorrente = numero;
     final pdf = await _creaPdf();
     final dir = await getTemporaryDirectory();
-    final file = File('${dir.path}/PREV-$numero.pdf');
+    final file = File('${dir.path}/PREV-$numeroCorrente.pdf');
     await file.writeAsBytes(await pdf.save());
-
     await Share.shareXFiles(
       [XFile(file.path)],
-      text: 'Ecco il tuo preventivo DBG Edile - N. $numero\nTotale: ${totale.toStringAsFixed(2)} €',
+      text: 'Ecco il tuo preventivo $ragioneSociale - N. $numeroCorrente\nTotale: ${totale.toStringAsFixed(2)} €',
     );
+
+    // AUMENTA IN AUTOMATICO SOLO DOPO L'INVIO
+    await _aumentaProgressivo();
+    setState(() {
+      righe.clear();
+      _nomeController.clear();
+      _telefonoController.clear();
+      _indirizzoController.clear();
+    });
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Preventivo $numeroCorrente inviato. Prossimo: $numero')));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('DBG Edile - Preventivo $numero'), backgroundColor: Colors.brown[800]),
+      appBar: AppBar(
+        title: Text(ragioneSociale.isEmpty ? 'DBG Edile - Preventivo $numero' : '$ragioneSociale - $numero'),
+        backgroundColor: Colors.brown[800],
+        actions: [
+          IconButton(icon: Icon(Icons.settings), onPressed: _apriImpostazioni, tooltip: 'Dati Ditta'),
+        ],
+      ),
       body: Padding(
         padding: EdgeInsets.all(12),
         child: Column(
           children: [
+            if (ragioneSociale.isEmpty)
+              Container(
+                width: double.infinity,
+                padding: EdgeInsets.all(10),
+                color: Colors.orange[100],
+                child: Text('⚙️ Prima volta? Premi l\'ingranaggio in alto e inserisci i dati della tua ditta.', style: TextStyle(fontSize: 13)),
+              ),
+            Text('Preventivo N. $numero', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.brown[800])),
+            SizedBox(height: 6),
             TextField(controller: _nomeController, decoration: InputDecoration(labelText: 'Nome cliente')),
             TextField(controller: _telefonoController, decoration: InputDecoration(labelText: 'Telefono')),
             TextField(controller: _indirizzoController, decoration: InputDecoration(labelText: 'Indirizzo lavoro')),
