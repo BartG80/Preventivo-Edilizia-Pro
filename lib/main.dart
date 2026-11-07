@@ -20,15 +20,37 @@ class Riga {
   double get totale => voce.prezzo * quantita;
 }
 
+// PESO FERRO kg/m per diametro
+double pesoFerro(int diametro) {
+  switch (diametro) {
+    case 6: return 0.222;
+    case 8: return 0.395;
+    case 10: return 0.617;
+    case 12: return 0.888;
+    case 14: return 1.208;
+    case 16: return 1.578;
+    case 18: return 2.0;
+    case 20: return 2.466;
+    case 22: return 2.984;
+    case 25: return 3.854;
+    default: return 0.888;
+  }
+}
+
 final List<Voce> LISTINO = [
   Voce(nome: 'Fondazioni', unita: 'ml', prezzo: 120),
   Voce(nome: 'Calcestruzzo fondazioni', unita: 'mc', prezzo: 140),
+  Voce(nome: 'Gabbia in ferro per fondazione', unita: 'kg', prezzo: 2.2),
   Voce(nome: 'Massetto', unita: 'mq', prezzo: 25),
   Voce(nome: 'Calcestruzzo massetto', unita: 'mc', prezzo: 130),
   Voce(nome: 'Armatura pilastri', unita: 'pz', prezzo: 350),
+  Voce(nome: 'Gabbia in ferro per pilastri', unita: 'kg', prezzo: 2.2),
   Voce(nome: 'Calcestruzzo pilastri', unita: 'mc', prezzo: 160),
   Voce(nome: 'Armatura travi fonde', unita: 'ml', prezzo: 180),
+  Voce(nome: 'Gabbia in ferro per travi fonde', unita: 'kg', prezzo: 2.2),
   Voce(nome: 'Armatura travi piatte', unita: 'ml', prezzo: 160),
+  Voce(nome: 'Gabbia in ferro per travi piatte', unita: 'kg', prezzo: 2.2),
+  Voce(nome: 'Gabbia in ferro generica', unita: 'kg', prezzo: 2.2),
   Voce(nome: 'Muratura', unita: 'mq', prezzo: 55),
   Voce(nome: 'Armatura solaio', unita: 'mq', prezzo: 45),
   Voce(nome: 'Calcestruzzo solaio', unita: 'mc', prezzo: 150),
@@ -188,6 +210,92 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
   double get totale => righe.fold(0, (s, r) => s + r.totale);
   double get acconto => totale * 0.40;
   double get saldo => totale - acconto;
+
+  // CALCOLATORE GABBIA - tu metti le misure, lui fa i kg da solo
+  void _calcolaGabbia() async {
+    String tipo = 'Gabbia in ferro per travi fonde';
+    final lungController = TextEditingController(text: '5');
+    final nTondiController = TextEditingController(text: '4');
+    int diamTondi = 14;
+    int diamStaffe = 8;
+    final passoController = TextEditingController(text: '20');
+    final baseController = TextEditingController(text: '30');
+    final altezzaController = TextEditingController(text: '40');
+    final prezzoController = TextEditingController(text: '2.2');
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setD) => AlertDialog(
+          title: Text('Calcola Gabbia in Ferro'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButton<String>(
+                  isExpanded: true,
+                  value: tipo,
+                  items: [
+                    'Gabbia in ferro per fondazione',
+                    'Gabbia in ferro per pilastri',
+                    'Gabbia in ferro per travi fonde',
+                    'Gabbia in ferro per travi piatte',
+                  ].map((e) => DropdownMenuItem(value: e, child: Text(e, style: TextStyle(fontSize: 13)))).toList(),
+                  onChanged: (v) => setD(() => tipo = v!),
+                ),
+                TextField(controller: lungController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Lunghezza gabbia (m)')),
+                TextField(controller: nTondiController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'N. tondi longitudinali')),
+                Row(children: [
+                  Expanded(child: Text('Diametro tondi: ')),
+                  DropdownButton<int>(value: diamTondi, items: [10,12,14,16,18,20,22,25].map((d) => DropdownMenuItem(value: d, child: Text('Ø$d'))).toList(), onChanged: (v) => setD(() => diamTondi = v!)),
+                ]),
+                Row(children: [
+                  Expanded(child: Text('Diametro staffe: ')),
+                  DropdownButton<int>(value: diamStaffe, items: [6,8,10,12].map((d) => DropdownMenuItem(value: d, child: Text('Ø$d'))).toList(), onChanged: (v) => setD(() => diamStaffe = v!)),
+                ]),
+                TextField(controller: passoController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Distanza staffe (cm) - es. 20')),
+                TextField(controller: baseController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Base sezione (cm) - es. 30')),
+                TextField(controller: altezzaController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Altezza sezione (cm) - es. 40')),
+                TextField(controller: prezzoController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Prezzo Euro / kg')),
+                SizedBox(height: 8),
+                Text('Non devi fare conti: metti le misure, lui calcola i kg.', style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Annulla')),
+            ElevatedButton(
+              onPressed: () {
+                final lung = double.tryParse(lungController.text.replaceAll(',', '.')) ?? 0;
+                final nTondi = double.tryParse(nTondiController.text) ?? 4;
+                final passo = double.tryParse(passoController.text.replaceAll(',', '.')) ?? 20;
+                final base = double.tryParse(baseController.text.replaceAll(',', '.')) ?? 30;
+                final alt = double.tryParse(altezzaController.text.replaceAll(',', '.')) ?? 40;
+                final prezzo = double.tryParse(prezzoController.text.replaceAll(',', '.')) ?? 2.2;
+
+                // 1. Tondi longitudinali
+                final metriTondi = nTondi * lung;
+                final kgTondi = metriTondi * pesoFerro(diamTondi);
+                // 2. Staffe: quante + quanto e lunga una staffa
+                final nStaffe = (lung * 100 / passo).ceil() + 1;
+                final perimetroStaffa = ((base + alt) * 2) / 100 + 0.20; // + pieghe
+                final metriStaffe = nStaffe * perimetroStaffa;
+                final kgStaffe = metriStaffe * pesoFerro(diamStaffe);
+                final kgTotali = kgTondi + kgStaffe;
+
+                setState(() {
+                  righe.add(Riga(voce: Voce(nome: tipo, unita: 'kg', prezzo: prezzo), quantita: double.parse(kgTotali.toStringAsFixed(1))));
+                });
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$tipo: ${kgTotali.toStringAsFixed(1)} kg - $nStaffe staffe Ø$diamStaffe')));
+              },
+              child: Text('Calcola e Aggiungi'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   void _aggiungiVoce() async {
     Voce? selezionata = LISTINO[0];
@@ -350,7 +458,13 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
             TextField(controller: _telefonoController, decoration: InputDecoration(labelText: 'Telefono')),
             TextField(controller: _indirizzoController, decoration: InputDecoration(labelText: 'Indirizzo lavoro')),
             SizedBox(height: 10),
-            ElevatedButton.icon(onPressed: _aggiungiVoce, icon: Icon(Icons.add), label: Text('Aggiungi voce')),
+            Row(
+              children: [
+                Expanded(child: ElevatedButton.icon(onPressed: _aggiungiVoce, icon: Icon(Icons.add), label: Text('Aggiungi voce'))),
+                SizedBox(width: 8),
+                Expanded(child: ElevatedButton.icon(onPressed: _calcolaGabbia, icon: Icon(Icons.calculate), label: Text('Calcola Gabbia'), style: ElevatedButton.styleFrom(backgroundColor: Colors.orange[800]))),
+              ],
+            ),
             Expanded(
               child: ListView.builder(
                 itemCount: righe.length,
