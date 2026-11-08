@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -20,7 +21,13 @@ class Riga {
   double get totale => voce.prezzo * quantita;
 }
 
-// PESO FERRO kg/m per diametro
+class Cliente {
+  String nome; String telefono; String indirizzo;
+  Cliente({required this.nome, required this.telefono, required this.indirizzo});
+  Map<String, dynamic> toJson() => {'nome': nome, 'telefono': telefono, 'indirizzo': indirizzo};
+  static Cliente fromJson(Map<String, dynamic> j) => Cliente(nome: j['nome'] ?? '', telefono: j['telefono'] ?? '', indirizzo: j['indirizzo'] ?? '');
+}
+
 double pesoFerro(int diametro) {
   switch (diametro) {
     case 6: return 0.222;
@@ -83,6 +90,9 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
   final _telefonoController = TextEditingController();
   final _indirizzoController = TextEditingController();
   List<Riga> righe = [];
+  double aliquotaIva = 0.10;
+  List<Cliente> clienti = [];
+  Cliente? clienteSelezionato;
 
   int progressivo = 1;
   String get numero {
@@ -102,6 +112,49 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
     super.initState();
     _caricaDatiDitta();
     _caricaProgressivo();
+    _caricaClienti();
+  }
+
+  // --- CLIENTI SALVATI ---
+  Future<void> _caricaClienti() async {
+    final prefs = await SharedPreferences.getInstance();
+    final str = prefs.getString('clienti') ?? '[]';
+    final list = jsonDecode(str) as List;
+    setState(() { clienti = list.map((e) => Cliente.fromJson(e)).toList(); });
+  }
+
+  Future<void> _salvaClienti() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('clienti', jsonEncode(clienti.map((c) => c.toJson()).toList()));
+  }
+
+  Future<void> _salvaClienteCorrente() async {
+    final nome = _nomeController.text.trim();
+    if (nome.isEmpty) return;
+    final esiste = clienti.any((c) => c.nome.toLowerCase() == nome.toLowerCase());
+    if (!esiste) {
+      clienti.add(Cliente(nome: nome, telefono: _telefonoController.text.trim(), indirizzo: _indirizzoController.text.trim()));
+      clienti.sort((a, b) => a.nome.compareTo(b.nome));
+      await _salvaClienti();
+      setState(() {});
+    }
+  }
+
+  void _selezionaCliente(Cliente? c) {
+    if (c == null) return;
+    setState(() {
+      clienteSelezionato = c;
+      _nomeController.text = c.nome;
+      _telefonoController.text = c.telefono;
+      _indirizzoController.text = c.indirizzo;
+    });
+  }
+
+  void _eliminaCliente(Cliente c) async {
+    clienti.removeWhere((x) => x.nome == c.nome);
+    await _salvaClienti();
+    setState(() { if (clienteSelezionato?.nome == c.nome) clienteSelezionato = null; });
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Cliente ${c.nome} eliminato')));
   }
 
   Future<void> _caricaProgressivo() async {
@@ -109,11 +162,7 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
     final annoSalvato = prefs.getInt('annoProgressivo') ?? DateTime.now().year;
     final annoOra = DateTime.now().year;
     setState(() {
-      if (annoSalvato != annoOra) {
-        progressivo = 1;
-      } else {
-        progressivo = prefs.getInt('progressivo') ?? 1;
-      }
+      if (annoSalvato != annoOra) { progressivo = 1; } else { progressivo = prefs.getInt('progressivo') ?? 1; }
     });
   }
 
@@ -122,9 +171,7 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
     final nuovo = progressivo + 1;
     await prefs.setInt('progressivo', nuovo);
     await prefs.setInt('annoProgressivo', DateTime.now().year);
-    setState(() {
-      progressivo = nuovo;
-    });
+    setState(() { progressivo = nuovo; });
   }
 
   Future<void> _caricaDatiDitta() async {
@@ -152,6 +199,23 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
     await prefs.setString('citta', citta);
   }
 
+  void _cancellaVoci() {
+    setState(() { righe.clear(); });
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Voci cancellate')));
+  }
+
+  void _nuovoPreventivo() {
+    setState(() {
+      righe.clear();
+      _nomeController.clear();
+      _telefonoController.clear();
+      _indirizzoController.clear();
+      clienteSelezionato = null;
+      aliquotaIva = 0.10;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Nuovo preventivo - pronto')));
+  }
+
   void _apriImpostazioni() async {
     final cRagione = TextEditingController(text: ragioneSociale);
     final cIndirizzo = TextEditingController(text: indirizzoDitta);
@@ -159,59 +223,45 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
     final cTel = TextEditingController(text: telefonoDitta);
     final cEmail = TextEditingController(text: emailDitta);
     final cCitta = TextEditingController(text: citta);
-
     await showDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         title: Text('Dati della tua Ditta'),
         content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('Questi dati usciranno in automatico in tutti i PDF.', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
-              SizedBox(height: 12),
-              TextField(controller: cRagione, decoration: InputDecoration(labelText: 'Ragione Sociale *', hintText: 'Es. La tua Ditta SRL')),
-              TextField(controller: cIndirizzo, decoration: InputDecoration(labelText: 'Indirizzo *', hintText: 'Via Roma 10')),
-              TextField(controller: cCitta, decoration: InputDecoration(labelText: 'Citta *', hintText: 'Es. Bergamo')),
-              TextField(controller: cPiva, decoration: InputDecoration(labelText: 'P.IVA *', hintText: 'Es. 01234567890')),
-              TextField(controller: cTel, decoration: InputDecoration(labelText: 'Telefono *', hintText: 'Es. 333 1234567')),
-              TextField(controller: cEmail, decoration: InputDecoration(labelText: 'Email *', hintText: 'info@...')),
-            ],
-          ),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text('Questi dati usciranno in automatico in tutti i PDF.', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+            SizedBox(height: 12),
+            TextField(controller: cRagione, decoration: InputDecoration(labelText: 'Ragione Sociale *')),
+            TextField(controller: cIndirizzo, decoration: InputDecoration(labelText: 'Indirizzo *')),
+            TextField(controller: cCitta, decoration: InputDecoration(labelText: 'Citta *')),
+            TextField(controller: cPiva, decoration: InputDecoration(labelText: 'P.IVA *')),
+            TextField(controller: cTel, decoration: InputDecoration(labelText: 'Telefono *')),
+            TextField(controller: cEmail, decoration: InputDecoration(labelText: 'Email *')),
+          ]),
         ),
         actions: [
           if (ragioneSociale.isNotEmpty) TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Annulla')),
-          ElevatedButton(
-            onPressed: () {
-              if (cRagione.text.trim().isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Inserisci almeno la Ragione Sociale')));
-                return;
-              }
-              setState(() {
-                ragioneSociale = cRagione.text.trim();
-                indirizzoDitta = cIndirizzo.text.trim();
-                citta = cCitta.text.trim();
-                piva = cPiva.text.trim();
-                telefonoDitta = cTel.text.trim();
-                emailDitta = cEmail.text.trim();
-              });
-              _salvaDatiDitta();
-              Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Dati ditta salvati!')));
-            },
-            child: Text('Salva'),
-          ),
+          ElevatedButton(onPressed: () {
+            if (cRagione.text.trim().isEmpty) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Inserisci almeno la Ragione Sociale'))); return; }
+            setState(() { ragioneSociale = cRagione.text.trim(); indirizzoDitta = cIndirizzo.text.trim(); citta = cCitta.text.trim(); piva = cPiva.text.trim(); telefonoDitta = cTel.text.trim(); emailDitta = cEmail.text.trim(); });
+            _salvaDatiDitta();
+            Navigator.pop(ctx);
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Dati ditta salvati!')));
+          }, child: Text('Salva')),
         ],
       ),
     );
   }
 
-  double get totale => righe.fold(0, (s, r) => s + r.totale);
-  double get acconto => totale * 0.40;
-  double get saldo => totale - acconto;
+  double get subtotale => righe.fold(0, (s, r) => s + r.totale);
+  double get totale => subtotale;
+  double get iva => subtotale * aliquotaIva;
+  double get totaleConIva => subtotale + iva;
+  double get acconto => totaleConIva * 0.40;
+  double get saldo => totaleConIva - acconto;
+  int get percIva => (aliquotaIva * 100).toInt();
 
-  // CALCOLATORE GABBIA - tu metti le misure, lui fa i kg da solo
   void _calcolaGabbia() async {
     String tipo = 'Gabbia in ferro per travi fonde';
     final lungController = TextEditingController(text: '5');
@@ -222,75 +272,42 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
     final baseController = TextEditingController(text: '30');
     final altezzaController = TextEditingController(text: '40');
     final prezzoController = TextEditingController(text: '2.2');
-
     await showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setD) => AlertDialog(
           title: Text('Calcola Gabbia in Ferro'),
           content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                DropdownButton<String>(
-                  isExpanded: true,
-                  value: tipo,
-                  items: [
-                    'Gabbia in ferro per fondazione',
-                    'Gabbia in ferro per pilastri',
-                    'Gabbia in ferro per travi fonde',
-                    'Gabbia in ferro per travi piatte',
-                  ].map((e) => DropdownMenuItem(value: e, child: Text(e, style: TextStyle(fontSize: 13)))).toList(),
-                  onChanged: (v) => setD(() => tipo = v!),
-                ),
-                TextField(controller: lungController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Lunghezza gabbia (m)')),
-                TextField(controller: nTondiController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'N. tondi longitudinali')),
-                Row(children: [
-                  Expanded(child: Text('Diametro tondi: ')),
-                  DropdownButton<int>(value: diamTondi, items: [10,12,14,16,18,20,22,25].map((d) => DropdownMenuItem(value: d, child: Text('Ø$d'))).toList(), onChanged: (v) => setD(() => diamTondi = v!)),
-                ]),
-                Row(children: [
-                  Expanded(child: Text('Diametro staffe: ')),
-                  DropdownButton<int>(value: diamStaffe, items: [6,8,10,12].map((d) => DropdownMenuItem(value: d, child: Text('Ø$d'))).toList(), onChanged: (v) => setD(() => diamStaffe = v!)),
-                ]),
-                TextField(controller: passoController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Distanza staffe (cm) - es. 20')),
-                TextField(controller: baseController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Base sezione (cm) - es. 30')),
-                TextField(controller: altezzaController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Altezza sezione (cm) - es. 40')),
-                TextField(controller: prezzoController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Prezzo Euro / kg')),
-                SizedBox(height: 8),
-                Text('Non devi fare conti: metti le misure, lui calcola i kg.', style: TextStyle(fontSize: 11, color: Colors.grey[600])),
-              ],
-            ),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              DropdownButton<String>(isExpanded: true, value: tipo, items: ['Gabbia in ferro per fondazione','Gabbia in ferro per pilastri','Gabbia in ferro per travi fonde','Gabbia in ferro per travi piatte'].map((e) => DropdownMenuItem(value: e, child: Text(e, style: TextStyle(fontSize: 13)))).toList(), onChanged: (v) => setD(() => tipo = v!)),
+              TextField(controller: lungController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Lunghezza gabbia (m)')),
+              TextField(controller: nTondiController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'N. tondi longitudinali')),
+              Row(children: [Expanded(child: Text('Diametro tondi: ')), DropdownButton<int>(value: diamTondi, items: [10,12,14,16,18,20,22,25].map((d) => DropdownMenuItem(value: d, child: Text('Ø$d'))).toList(), onChanged: (v) => setD(() => diamTondi = v!))]),
+              Row(children: [Expanded(child: Text('Diametro staffe: ')), DropdownButton<int>(value: diamStaffe, items: [6,8,10,12].map((d) => DropdownMenuItem(value: d, child: Text('Ø$d'))).toList(), onChanged: (v) => setD(() => diamStaffe = v!))]),
+              TextField(controller: passoController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Distanza staffe (cm) - es. 20')),
+              TextField(controller: baseController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Base sezione (cm) - es. 30')),
+              TextField(controller: altezzaController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Altezza sezione (cm) - es. 40')),
+              TextField(controller: prezzoController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Prezzo Euro / kg')),
+            ]),
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Annulla')),
-            ElevatedButton(
-              onPressed: () {
-                final lung = double.tryParse(lungController.text.replaceAll(',', '.')) ?? 0;
-                final nTondi = double.tryParse(nTondiController.text) ?? 4;
-                final passo = double.tryParse(passoController.text.replaceAll(',', '.')) ?? 20;
-                final base = double.tryParse(baseController.text.replaceAll(',', '.')) ?? 30;
-                final alt = double.tryParse(altezzaController.text.replaceAll(',', '.')) ?? 40;
-                final prezzo = double.tryParse(prezzoController.text.replaceAll(',', '.')) ?? 2.2;
-
-                // 1. Tondi longitudinali
-                final metriTondi = nTondi * lung;
-                final kgTondi = metriTondi * pesoFerro(diamTondi);
-                // 2. Staffe: quante + quanto e lunga una staffa
-                final nStaffe = (lung * 100 / passo).ceil() + 1;
-                final perimetroStaffa = ((base + alt) * 2) / 100 + 0.20; // + pieghe
-                final metriStaffe = nStaffe * perimetroStaffa;
-                final kgStaffe = metriStaffe * pesoFerro(diamStaffe);
-                final kgTotali = kgTondi + kgStaffe;
-
-                setState(() {
-                  righe.add(Riga(voce: Voce(nome: tipo, unita: 'kg', prezzo: prezzo), quantita: double.parse(kgTotali.toStringAsFixed(1))));
-                });
-                Navigator.pop(ctx);
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$tipo: ${kgTotali.toStringAsFixed(1)} kg - $nStaffe staffe Ø$diamStaffe')));
-              },
-              child: Text('Calcola e Aggiungi'),
-            ),
+            ElevatedButton(onPressed: () {
+              final lung = double.tryParse(lungController.text.replaceAll(',', '.')) ?? 0;
+              final nTondi = double.tryParse(nTondiController.text) ?? 4;
+              final passo = double.tryParse(passoController.text.replaceAll(',', '.')) ?? 20;
+              final base = double.tryParse(baseController.text.replaceAll(',', '.')) ?? 30;
+              final alt = double.tryParse(altezzaController.text.replaceAll(',', '.')) ?? 40;
+              final prezzo = double.tryParse(prezzoController.text.replaceAll(',', '.')) ?? 2.2;
+              final kgTondi = (nTondi * lung) * pesoFerro(diamTondi);
+              final nStaffe = (lung * 100 / passo).ceil() + 1;
+              final perimetroStaffa = ((base + alt) * 2) / 100 + 0.20;
+              final kgStaffe = (nStaffe * perimetroStaffa) * pesoFerro(diamStaffe);
+              final kgTotali = kgTondi + kgStaffe;
+              setState(() { righe.add(Riga(voce: Voce(nome: tipo, unita: 'kg', prezzo: prezzo), quantita: double.parse(kgTotali.toStringAsFixed(1)))); });
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$tipo: ${kgTotali.toStringAsFixed(1)} kg - $nStaffe staffe Ø$diamStaffe')));
+            }, child: Text('Calcola e Aggiungi')),
           ],
         ),
       ),
@@ -301,43 +318,24 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
     Voce? selezionata = LISTINO[0];
     final qtaController = TextEditingController(text: '1');
     final prezzoController = TextEditingController(text: selezionata.prezzo.toStringAsFixed(0));
-
     await showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setD) => AlertDialog(
           title: Text('Aggiungi voce'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              DropdownButton<Voce>(
-                isExpanded: true,
-                value: selezionata,
-                items: LISTINO.map((v) => DropdownMenuItem(value: v, child: Text(v.nome))).toList(),
-                onChanged: (v) {
-                  setD(() {
-                    selezionata = v;
-                    prezzoController.text = v!.prezzo.toStringAsFixed(0);
-                  });
-                },
-              ),
-              TextField(controller: qtaController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Quantita (${selezionata!.unita})')),
-              TextField(controller: prezzoController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Prezzo Euro / ${selezionata!.unita}')),
-            ],
-          ),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            DropdownButton<Voce>(isExpanded: true, value: selezionata, items: LISTINO.map((v) => DropdownMenuItem(value: v, child: Text(v.nome))).toList(), onChanged: (v) { setD(() { selezionata = v; prezzoController.text = v!.prezzo.toStringAsFixed(0); }); }),
+            TextField(controller: qtaController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Quantita (${selezionata!.unita})')),
+            TextField(controller: prezzoController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Prezzo Euro / ${selezionata!.unita}')),
+          ]),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Annulla')),
-            ElevatedButton(
-              onPressed: () {
-                final q = double.tryParse(qtaController.text.replaceAll(',', '.')) ?? 1;
-                final p = double.tryParse(prezzoController.text.replaceAll(',', '.')) ?? selezionata!.prezzo;
-                setState(() {
-                  righe.add(Riga(voce: Voce(nome: selezionata!.nome, unita: selezionata!.unita, prezzo: p), quantita: q));
-                });
-                Navigator.pop(ctx);
-              },
-              child: Text('Aggiungi'),
-            ),
+            ElevatedButton(onPressed: () {
+              final q = double.tryParse(qtaController.text.replaceAll(',', '.')) ?? 1;
+              final p = double.tryParse(prezzoController.text.replaceAll(',', '.')) ?? selezionata!.prezzo;
+              setState(() { righe.add(Riga(voce: Voce(nome: selezionata!.nome, unita: selezionata!.unita, prezzo: p), quantita: q)); });
+              Navigator.pop(ctx);
+            }, child: Text('Aggiungi')),
           ],
         ),
       ),
@@ -348,87 +346,65 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
     final font = await PdfGoogleFonts.robotoRegular();
     final fontBold = await PdfGoogleFonts.robotoBold();
     final foroText = citta.isNotEmpty ? 'Foro competente: Tribunale di $citta.' : '';
-
     final pdf = pw.Document();
-    pdf.addPage(
-      pw.MultiPage(
-        theme: pw.ThemeData.withFont(base: font, bold: fontBold),
-        build: (ctx) => [
-          pw.Text(ragioneSociale.toUpperCase(), style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold)),
-          if (indirizzoDitta.isNotEmpty || citta.isNotEmpty) pw.Text('$indirizzoDitta, $citta', style: pw.TextStyle(fontSize: 10)),
-          if (piva.isNotEmpty) pw.Text('P.IVA $piva', style: pw.TextStyle(fontSize: 10)),
-          if (telefonoDitta.isNotEmpty || emailDitta.isNotEmpty) pw.Text('$telefonoDitta - $emailDitta', style: pw.TextStyle(fontSize: 10)),
-          pw.Divider(),
-          pw.SizedBox(height: 8),
-          pw.Text('PREVENTIVO N. $numero', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
-          pw.SizedBox(height: 12),
-          pw.Text('Cliente: ${_nomeController.text}'),
-          pw.Text('Telefono: ${_telefonoController.text}'),
-          pw.Text('Indirizzo lavoro: ${_indirizzoController.text}'),
-          pw.SizedBox(height: 16),
-          pw.Table.fromTextArray(
-            headers: ['Voce', 'Qta', 'Prezzo', 'Totale'],
-            data: righe.map((r) => [
-              r.voce.nome,
-              '${r.quantita.toStringAsFixed(2)} ${r.voce.unita}',
-              '${r.voce.prezzo.toStringAsFixed(2)} Euro',
-              '${r.totale.toStringAsFixed(2)} Euro',
-            ]).toList(),
-          ),
-          pw.SizedBox(height: 16),
-          pw.Text('TOTALE: ${totale.toStringAsFixed(2)} Euro', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
-          pw.Text('ACCONTO 40% DA VERSARE: ${acconto.toStringAsFixed(2)} Euro'),
-          pw.Text('SALDO A LAVORO FINITO: ${saldo.toStringAsFixed(2)} Euro'),
-          pw.SizedBox(height: 20),
-          pw.Divider(),
-          pw.Text('NOTE LEGALI E CONDIZIONI', style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
-          pw.SizedBox(height: 6),
-          pw.Text('1. Il presente preventivo ha validita di 30 giorni dalla data di emissione.', style: pw.TextStyle(fontSize: 9)),
-          pw.Text('2. I prezzi indicati sono IVA esclusa, salvo diversa indicazione.', style: pw.TextStyle(fontSize: 9)),
-          pw.Text('3. Per conferma dell\'ordine e richiesto il versamento di un acconto pari al 40% dell\'importo totale.', style: pw.TextStyle(fontSize: 9)),
-          pw.Text('4. Il saldo dovra essere corrisposto a lavoro finito, prima della consegna.', style: pw.TextStyle(fontSize: 9)),
-          pw.Text('5. Eventuali varianti, modifiche o lavori extra richiesti in corso d\'opera saranno conteggiati a parte e dovranno essere approvati per iscritto.', style: pw.TextStyle(fontSize: 9)),
-          pw.Text('6. I materiali sono quelli indicati nel preventivo. Eventuali sostituzioni saranno concordate con il cliente.', style: pw.TextStyle(fontSize: 9)),
-          pw.Text('7. Il presente documento non costituisce fattura. La fattura verra emessa al pagamento secondo normativa vigente.', style: pw.TextStyle(fontSize: 9)),
-          if (foroText.isNotEmpty) pw.Text('8. $foroText', style: pw.TextStyle(fontSize: 9)),
-          pw.SizedBox(height: 16),
-          pw.Text('Firma per accettazione: ___________________________', style: pw.TextStyle(fontSize: 10)),
-          pw.SizedBox(height: 8),
-          pw.Text('Data: ____ / ____ / ________', style: pw.TextStyle(fontSize: 10)),
-          pw.SizedBox(height: 16),
-          pw.Text('Grazie per aver scelto $ragioneSociale.', style: pw.TextStyle(fontSize: 10)),
-        ],
-      ),
-    );
+    pdf.addPage(pw.MultiPage(
+      theme: pw.ThemeData.withFont(base: font, bold: fontBold),
+      build: (ctx) => [
+        pw.Text(ragioneSociale.toUpperCase(), style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold)),
+        if (indirizzoDitta.isNotEmpty || citta.isNotEmpty) pw.Text('$indirizzoDitta, $citta', style: pw.TextStyle(fontSize: 10)),
+        if (piva.isNotEmpty) pw.Text('P.IVA $piva', style: pw.TextStyle(fontSize: 10)),
+        if (telefonoDitta.isNotEmpty || emailDitta.isNotEmpty) pw.Text('$telefonoDitta - $emailDitta', style: pw.TextStyle(fontSize: 10)),
+        pw.Divider(),
+        pw.SizedBox(height: 8),
+        pw.Text('PREVENTIVO N. $numero', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
+        pw.SizedBox(height: 12),
+        pw.Text('Cliente: ${_nomeController.text}'),
+        pw.Text('Telefono: ${_telefonoController.text}'),
+        pw.Text('Indirizzo lavoro: ${_indirizzoController.text}'),
+        pw.SizedBox(height: 16),
+        pw.Table.fromTextArray(headers: ['Voce', 'Qta', 'Prezzo', 'Totale'], data: righe.map((r) => [r.voce.nome, '${r.quantita.toStringAsFixed(2)} ${r.voce.unita}', '${r.voce.prezzo.toStringAsFixed(2)} Euro', '${r.totale.toStringAsFixed(2)} Euro']).toList()),
+        pw.SizedBox(height: 16),
+        pw.Text('SUBTOTALE: ${subtotale.toStringAsFixed(2)} Euro', style: pw.TextStyle(fontSize: 13)),
+        pw.Text('IVA $percIva%: ${iva.toStringAsFixed(2)} Euro', style: pw.TextStyle(fontSize: 13)),
+        pw.Text('TOTALE IVA INCLUSA: ${totaleConIva.toStringAsFixed(2)} Euro', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
+        pw.Text('ACCONTO 40% DA VERSARE: ${acconto.toStringAsFixed(2)} Euro'),
+        pw.Text('SALDO A LAVORO FINITO: ${saldo.toStringAsFixed(2)} Euro'),
+        pw.SizedBox(height: 20),
+        pw.Divider(),
+        pw.Text('NOTE LEGALI E CONDIZIONI', style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
+        pw.SizedBox(height: 6),
+        pw.Text('1. Il presente preventivo ha validita di 30 giorni dalla data di emissione.', style: pw.TextStyle(fontSize: 9)),
+        pw.Text('2. I prezzi indicati sono IVA inclusa al $percIva%, salvo diversa indicazione.', style: pw.TextStyle(fontSize: 9)),
+        pw.Text('3. Per conferma dell\'ordine e richiesto il versamento di un acconto pari al 40% dell\'importo totale IVA inclusa.', style: pw.TextStyle(fontSize: 9)),
+        pw.Text('4. Il saldo dovra essere corrisposto a lavoro finito, prima della consegna.', style: pw.TextStyle(fontSize: 9)),
+        pw.Text('5. Eventuali varianti, modifiche o lavori extra richiesti in corso d\'opera saranno conteggiati a parte e dovranno essere approvati per iscritto.', style: pw.TextStyle(fontSize: 9)),
+        pw.Text('6. I materiali sono quelli indicati nel preventivo. Eventuali sostituzioni saranno concordate con il cliente.', style: pw.TextStyle(fontSize: 9)),
+        pw.Text('7. Il presente documento non costituisce fattura. La fattura verra emessa al pagamento secondo normativa vigente.', style: pw.TextStyle(fontSize: 9)),
+        if (foroText.isNotEmpty) pw.Text('8. $foroText', style: pw.TextStyle(fontSize: 9)),
+        pw.SizedBox(height: 16),
+        pw.Text('Firma per accettazione: ___________________________', style: pw.TextStyle(fontSize: 10)),
+        pw.SizedBox(height: 8),
+        pw.Text('Data: ____ / ____ / ________', style: pw.TextStyle(fontSize: 10)),
+        pw.SizedBox(height: 16),
+        pw.Text('Grazie per aver scelto $ragioneSociale.', style: pw.TextStyle(fontSize: 10)),
+      ],
+    ));
     return pdf;
   }
 
   Future<void> _condividiWhatsApp() async {
-    if (righe.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Aggiungi almeno una voce')));
-      return;
-    }
-    if (ragioneSociale.isEmpty) {
-      _apriImpostazioni();
-      return;
-    }
+    if (righe.isEmpty) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Aggiungi almeno una voce'))); return; }
+    if (ragioneSociale.isEmpty) { _apriImpostazioni(); return; }
+    await _salvaClienteCorrente(); // <-- salva il cliente
     final numeroCorrente = numero;
     final pdf = await _creaPdf();
     final dir = await getTemporaryDirectory();
     final file = File('${dir.path}/PREV-$numeroCorrente.pdf');
     await file.writeAsBytes(await pdf.save());
-    await Share.shareXFiles(
-      [XFile(file.path)],
-      text: 'Ecco il tuo preventivo $ragioneSociale - N. $numeroCorrente\nTotale: ${totale.toStringAsFixed(2)} Euro',
-    );
+    await Share.shareXFiles([XFile(file.path)], text: 'Ecco il tuo preventivo $ragioneSociale - N. $numeroCorrente\nTotale IVA inclusa ($percIva%): ${totaleConIva.toStringAsFixed(2)} Euro');
     await _aumentaProgressivo();
-    setState(() {
-      righe.clear();
-      _nomeController.clear();
-      _telefonoController.clear();
-      _indirizzoController.clear();
-    });
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Preventivo $numeroCorrente inviato. Prossimo: $numero')));
+    setState(() { righe.clear(); _nomeController.clear(); _telefonoController.clear(); _indirizzoController.clear(); clienteSelezionato = null; });
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Preventivo $numeroCorrente inviato. Cliente salvato! Prossimo: $numero')));
   }
 
   @override
@@ -438,6 +414,8 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
         title: Text(ragioneSociale.isEmpty ? 'Preventivo $numero' : '$ragioneSociale - $numero'),
         backgroundColor: Colors.brown[800],
         actions: [
+          IconButton(icon: Icon(Icons.refresh), onPressed: _nuovoPreventivo, tooltip: 'Nuovo - Refresh'),
+          IconButton(icon: Icon(Icons.delete), onPressed: _cancellaVoci, tooltip: 'Cancella voci'),
           IconButton(icon: Icon(Icons.settings), onPressed: _apriImpostazioni, tooltip: 'Dati Ditta'),
         ],
       ),
@@ -445,59 +423,47 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
         padding: EdgeInsets.all(12),
         child: Column(
           children: [
-            if (ragioneSociale.isEmpty)
-              Container(
-                width: double.infinity,
-                padding: EdgeInsets.all(10),
-                color: Colors.orange[100],
-                child: Text('Prima volta? Premi l\'ingranaggio in alto e inserisci i dati della tua ditta.', style: TextStyle(fontSize: 13)),
-              ),
+            if (ragioneSociale.isEmpty) Container(width: double.infinity, padding: EdgeInsets.all(10), color: Colors.orange[100], child: Text('Prima volta? Premi l\'ingranaggio in alto e inserisci i dati della tua ditta.', style: TextStyle(fontSize: 13))),
             Text('Preventivo N. $numero', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.brown[800])),
             SizedBox(height: 6),
+            // CLIENTI SALVATI
+            if (clienti.isNotEmpty) Container(padding: EdgeInsets.symmetric(horizontal: 12), decoration: BoxDecoration(color: Colors.blue[50], borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.blue[200]!)), child: DropdownButton<Cliente>(isExpanded: true, hint: Text('👤 Seleziona cliente salvato (${clienti.length})'), value: clienteSelezionato, items: clienti.map((c) => DropdownMenuItem(value: c, child: Text(c.nome))).toList(), onChanged: _selezionaCliente)),
+            if (clienti.isNotEmpty) SizedBox(height: 6),
             TextField(controller: _nomeController, decoration: InputDecoration(labelText: 'Nome cliente')),
             TextField(controller: _telefonoController, decoration: InputDecoration(labelText: 'Telefono')),
             TextField(controller: _indirizzoController, decoration: InputDecoration(labelText: 'Indirizzo lavoro')),
+            if (clienteSelezionato != null) TextButton.icon(onPressed: () => _eliminaCliente(clienteSelezionato!), icon: Icon(Icons.delete, size: 16, color: Colors.red), label: Text('Elimina questo cliente dai salvati', style: TextStyle(color: Colors.red, fontSize: 12))),
             SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(child: ElevatedButton.icon(onPressed: _aggiungiVoce, icon: Icon(Icons.add), label: Text('Aggiungi voce'))),
-                SizedBox(width: 8),
-                Expanded(child: ElevatedButton.icon(onPressed: _calcolaGabbia, icon: Icon(Icons.calculate), label: Text('Calcola Gabbia'), style: ElevatedButton.styleFrom(backgroundColor: Colors.orange[800]))),
-              ],
-            ),
-            Expanded(
-              child: ListView.builder(
-                itemCount: righe.length,
-                itemBuilder: (ctx, i) {
-                  final r = righe[i];
-                  return ListTile(
-                    title: Text(r.voce.nome),
-                    subtitle: Text('${r.quantita} ${r.voce.unita} x ${r.voce.prezzo} Euro'),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text('${r.totale.toStringAsFixed(2)} Euro', style: TextStyle(fontWeight: FontWeight.bold)),
-                        IconButton(icon: Icon(Icons.delete, color: Colors.red), onPressed: () => setState(() => righe.removeAt(i))),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ),
+            Container(padding: EdgeInsets.symmetric(horizontal: 12, vertical: 4), decoration: BoxDecoration(color: Colors.brown[50], borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.brown[200]!)), child: Row(children: [
+              Text('IVA: ', style: TextStyle(fontWeight: FontWeight.bold)),
+              DropdownButton<double>(value: aliquotaIva, items: [0.04, 0.10, 0.22].map((v) => DropdownMenuItem(value: v, child: Text('${(v*100).toInt()}%'))).toList(), onChanged: (v) => setState(() => aliquotaIva = v!)),
+              SizedBox(width: 8),
+              Text('(4% prima casa, 10% ristr., 22% normale)', style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+            ])),
+            SizedBox(height: 10),
+            Row(children: [
+              Expanded(child: ElevatedButton.icon(onPressed: _aggiungiVoce, icon: Icon(Icons.add), label: Text('Aggiungi voce'))),
+              SizedBox(width: 8),
+              Expanded(child: ElevatedButton.icon(onPressed: _calcolaGabbia, icon: Icon(Icons.calculate), label: Text('Calcola Gabbia'), style: ElevatedButton.styleFrom(backgroundColor: Colors.orange[800]))),
+            ]),
+            SizedBox(height: 8),
+            Row(children: [
+              Expanded(child: OutlinedButton.icon(onPressed: _nuovoPreventivo, icon: Icon(Icons.refresh, size: 18), label: Text('Refresh / Nuovo'))),
+              SizedBox(width: 8),
+              Expanded(child: OutlinedButton.icon(onPressed: _cancellaVoci, icon: Icon(Icons.delete, size: 18), label: Text('Cancella voci'), style: OutlinedButton.styleFrom(foregroundColor: Colors.red))),
+            ]),
+            Expanded(child: ListView.builder(itemCount: righe.length, itemBuilder: (ctx, i) {
+              final r = righe[i];
+              return ListTile(title: Text(r.voce.nome), subtitle: Text('${r.quantita} ${r.voce.unita} x ${r.voce.prezzo} Euro'), trailing: Row(mainAxisSize: MainAxisSize.min, children: [Text('${r.totale.toStringAsFixed(2)} Euro', style: TextStyle(fontWeight: FontWeight.bold)), IconButton(icon: Icon(Icons.delete, color: Colors.red), onPressed: () => setState(() => righe.removeAt(i)))]));
+            })),
             Divider(),
-            Text('TOTALE: ${totale.toStringAsFixed(2)} Euro', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            Text('SUBTOTALE: ${subtotale.toStringAsFixed(2)} Euro', style: TextStyle(fontSize: 14)),
+            Text('IVA $percIva%: ${iva.toStringAsFixed(2)} Euro', style: TextStyle(fontSize: 14)),
+            Text('TOTALE IVA INCLUSA: ${totaleConIva.toStringAsFixed(2)} Euro', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
             Text('ACCONTO 40%: ${acconto.toStringAsFixed(2)} Euro'),
             Text('SALDO: ${saldo.toStringAsFixed(2)} Euro'),
             SizedBox(height: 10),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: _condividiWhatsApp,
-                icon: Icon(Icons.share),
-                label: Text('Condividi su WhatsApp'),
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: EdgeInsets.symmetric(vertical: 14)),
-              ),
-            ),
+            SizedBox(width: double.infinity, child: ElevatedButton.icon(onPressed: _condividiWhatsApp, icon: Icon(Icons.share), label: Text('Condividi su WhatsApp'), style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: EdgeInsets.symmetric(vertical: 14)))),
           ],
         ),
       ),
