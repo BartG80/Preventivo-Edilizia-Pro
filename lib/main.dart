@@ -1,256 +1,469 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:pdf/pdf.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:printing/printing.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-void main() => runApp(const EdilBlackApp());
+void main() => runApp(MaterialApp(home: PreventivoEdile(), debugShowCheckedModeBanner: false));
 
-class EdilBlackApp extends StatelessWidget {
-  const EdilBlackApp({super.key});
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'EdilBlack',
-      theme: ThemeData(primarySwatch: Colors.blue, useMaterial3: false),
-      home: const PreventivoPage(),
-    );
+class Voce {
+  String nome; String unita; double prezzo;
+  Voce({required this.nome, required this.unita, required this.prezzo});
+}
+
+class Riga {
+  Voce voce; double quantita;
+  Riga({required this.voce, required this.quantita});
+  double get totale => voce.prezzo * quantita;
+}
+
+class Cliente {
+  String nome; String telefono; String indirizzo;
+  Cliente({required this.nome, required this.telefono, required this.indirizzo});
+  Map<String, dynamic> toJson() => {'nome': nome, 'telefono': telefono, 'indirizzo': indirizzo};
+  static Cliente fromJson(Map<String, dynamic> j) => Cliente(nome: j['nome'] ?? '', telefono: j['telefono'] ?? '', indirizzo: j['indirizzo'] ?? '');
+}
+
+double pesoFerro(int diametro) {
+  switch (diametro) {
+    case 6: return 0.222;
+    case 8: return 0.395;
+    case 10: return 0.617;
+    case 12: return 0.888;
+    case 14: return 1.208;
+    case 16: return 1.578;
+    case 18: return 2.0;
+    case 20: return 2.466;
+    case 22: return 2.984;
+    case 25: return 3.854;
+    default: return 0.888;
   }
 }
 
-class Voce {
-  String descrizione;
-  double quantita;
-  double prezzo;
-  Voce({required this.descrizione, this.quantita = 1, this.prezzo = 0});
-  double get totale => quantita * prezzo;
-}
+final List<Voce> LISTINO = [
+  Voce(nome: 'Fondazioni', unita: 'ml', prezzo: 120),
+  Voce(nome: 'Calcestruzzo fondazioni', unita: 'mc', prezzo: 140),
+  Voce(nome: 'Gabbia in ferro per fondazione', unita: 'kg', prezzo: 2.2),
+  Voce(nome: 'Massetto', unita: 'mq', prezzo: 25),
+  Voce(nome: 'Calcestruzzo massetto', unita: 'mc', prezzo: 130),
+  Voce(nome: 'Armatura pilastri', unita: 'pz', prezzo: 350),
+  Voce(nome: 'Gabbia in ferro per pilastri', unita: 'kg', prezzo: 2.2),
+  Voce(nome: 'Calcestruzzo pilastri', unita: 'mc', prezzo: 160),
+  Voce(nome: 'Armatura travi fonde', unita: 'ml', prezzo: 180),
+  Voce(nome: 'Gabbia in ferro per travi fonde', unita: 'kg', prezzo: 2.2),
+  Voce(nome: 'Armatura travi piatte', unita: 'ml', prezzo: 160),
+  Voce(nome: 'Gabbia in ferro per travi piatte', unita: 'kg', prezzo: 2.2),
+  Voce(nome: 'Gabbia in ferro generica', unita: 'kg', prezzo: 2.2),
+  Voce(nome: 'Muratura', unita: 'mq', prezzo: 55),
+  Voce(nome: 'Armatura solaio', unita: 'mq', prezzo: 45),
+  Voce(nome: 'Calcestruzzo solaio', unita: 'mc', prezzo: 150),
+  Voce(nome: 'Armatura scala', unita: 'pz', prezzo: 450),
+  Voce(nome: 'Armatura balconi', unita: 'mq', prezzo: 40),
+  Voce(nome: 'Armatura tetto', unita: 'mq', prezzo: 50),
+  Voce(nome: 'Calcestruzzo tetto', unita: 'mc', prezzo: 150),
+  Voce(nome: 'Calcestruzzo generico', unita: 'mc', prezzo: 140),
+  Voce(nome: 'Massetto a secco (sabbia e cemento)', unita: 'mq', prezzo: 30),
+  Voce(nome: 'Intonaco', unita: 'mq', prezzo: 22),
+  Voce(nome: 'Rasatura', unita: 'mq', prezzo: 12),
+  Voce(nome: 'Posa pavimento', unita: 'mq', prezzo: 28),
+  Voce(nome: 'Posa rivestimento', unita: 'mq', prezzo: 30),
+  Voce(nome: 'Posa piastrelle', unita: 'mq', prezzo: 28),
+  Voce(nome: 'Posa mosaico', unita: 'mq', prezzo: 45),
+  Voce(nome: 'Posa contro telaio', unita: 'pz', prezzo: 10),
+  Voce(nome: 'Cartongesso', unita: 'mq', prezzo: 35),
+  Voce(nome: 'Ristrutturazione cucina', unita: 'mq', prezzo: 350),
+  Voce(nome: 'Ristrutturazione bagno', unita: 'mq', prezzo: 550),
+  Voce(nome: 'Demolizione', unita: 'mq', prezzo: 25),
+];
 
-class PreventivoPage extends StatefulWidget {
-  const PreventivoPage({super.key});
+class PreventivoEdile extends StatefulWidget {
   @override
-  State<PreventivoPage> createState() => _PreventivoPageState();
+  _PreventivoEdileState createState() => _PreventivoEdileState();
 }
 
-class _PreventivoPageState extends State<PreventivoPage> {
-  int numeroPreventivo = 1;
-  int anno = DateTime.now().year;
-  double iva = 10;
+class _PreventivoEdileState extends State<PreventivoEdile> {
+  final _nomeController = TextEditingController();
+  final _telefonoController = TextEditingController();
+  final _indirizzoController = TextEditingController();
+  List<Riga> righe = [];
+  double aliquotaIva = 0.10;
+  List<Cliente> clienti = [];
+  Cliente? clienteSelezionato;
 
-  List<Voce> voci = [];
-  List<Map<String, String>> clientiSalvati = [
-    {'nome': 'Mario Rossi', 'telefono': '3456788776', 'indirizzo': 'Via Roma 1'},
-  ];
+  int progressivo = 1;
+  String get numero {
+    final anno = DateTime.now().year;
+    return '$anno-${progressivo.toString().padLeft(3, '0')}';
+  }
 
-  final nomeCtrl = TextEditingController();
-  final telCtrl = TextEditingController();
-  final indCtrl = TextEditingController();
+  String ragioneSociale = '';
+  String indirizzoDitta = '';
+  String piva = '';
+  String telefonoDitta = '';
+  String emailDitta = '';
+  String citta = '';
 
   @override
   void initState() {
     super.initState();
-    _caricaNumero();
+    _caricaDatiDitta();
+    _caricaProgressivo();
+    _caricaClienti();
   }
 
-  // FIX 1 - NUMERO PROGRESSIVO CHE AVANZA E RESTA SALVATO
-  Future<void> _caricaNumero() async {
+  // --- CLIENTI SALVATI ---
+  Future<void> _caricaClienti() async {
     final prefs = await SharedPreferences.getInstance();
-    int salvato = prefs.getInt('ultimo_numero_$anno') ?? 0;
-    setState(() => numeroPreventivo = salvato + 1);
+    final str = prefs.getString('clienti') ?? '[]';
+    final list = jsonDecode(str) as List;
+    setState(() { clienti = list.map((e) => Cliente.fromJson(e)).toList(); });
   }
 
-  Future<void> _salvaENumeroAvanti() async {
+  Future<void> _salvaClienti() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('ultimo_numero_$anno', numeroPreventivo);
-    setState(() => numeroPreventivo = numeroPreventivo + 1);
+    await prefs.setString('clienti', jsonEncode(clienti.map((c) => c.toJson()).toList()));
   }
 
-  double get subtotale => voci.fold(0, (s, v) => s + v.totale);
-  double get totale => subtotale + (subtotale * iva / 100);
-  String get numeroFormattato =>
-      'PREV-$anno-${numeroPreventivo.toString().padLeft(3, '0')}';
-
-  void _aggiungiVoce() {
-    setState(() => voci.add(Voce(descrizione: '')));
+  Future<void> _salvaClienteCorrente() async {
+    final nome = _nomeController.text.trim();
+    if (nome.isEmpty) return;
+    final esiste = clienti.any((c) => c.nome.toLowerCase() == nome.toLowerCase());
+    if (!esiste) {
+      clienti.add(Cliente(nome: nome, telefono: _telefonoController.text.trim(), indirizzo: _indirizzoController.text.trim()));
+      clienti.sort((a, b) => a.nome.compareTo(b.nome));
+      await _salvaClienti();
+      setState(() {});
+    }
   }
 
-  // FIX 3 - NUOVO PREVENTIVO PULISCE TUTTO DAVVERO
-  void _nuovoPreventivo() {
+  void _selezionaCliente(Cliente? c) {
+    if (c == null) return;
     setState(() {
-      voci = [];
-      nomeCtrl.clear();
-      telCtrl.clear();
-      indCtrl.clear();
+      clienteSelezionato = c;
+      _nomeController.text = c.nome;
+      _telefonoController.text = c.telefono;
+      _indirizzoController.text = c.indirizzo;
     });
   }
 
-  Future<void> _condividiWhatsApp() async {
-    // Crea PDF
-    final pdf = pw.Document();
-    pdf.addPage(
-      pw.Page(
-        build: (context) => pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
-          children: [
-            pw.Text('Preventivo N. $numeroFormattato',
-                style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
-            pw.SizedBox(height: 10),
-            pw.Text('Cliente: ${nomeCtrl.text}'),
-            pw.Text('Telefono: ${telCtrl.text}'),
-            pw.Text('Indirizzo lavoro: ${indCtrl.text}'),
-            pw.SizedBox(height: 16),
-            ...voci.map((v) => pw.Text(
-                '${v.descrizione} - ${v.quantita} x ${v.prezzo.toStringAsFixed(2)} = ${v.totale.toStringAsFixed(2)} Euro')),
-            pw.SizedBox(height: 16),
-            pw.Text('Subtotale: ${subtotale.toStringAsFixed(2)} Euro'),
-            pw.Text('IVA $iva%: ${(totale - subtotale).toStringAsFixed(2)} Euro'),
-            pw.Text('TOTALE: ${totale.toStringAsFixed(2)} Euro',
-                style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
+  void _eliminaCliente(Cliente c) async {
+    clienti.removeWhere((x) => x.nome == c.nome);
+    await _salvaClienti();
+    setState(() { if (clienteSelezionato?.nome == c.nome) clienteSelezionato = null; });
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Cliente ${c.nome} eliminato')));
+  }
+
+  Future<void> _caricaProgressivo() async {
+    final prefs = await SharedPreferences.getInstance();
+    final annoSalvato = prefs.getInt('annoProgressivo') ?? DateTime.now().year;
+    final annoOra = DateTime.now().year;
+    setState(() {
+      if (annoSalvato != annoOra) { progressivo = 1; } else { progressivo = prefs.getInt('progressivo') ?? 1; }
+    });
+  }
+
+  Future<void> _aumentaProgressivo() async {
+    final prefs = await SharedPreferences.getInstance();
+    final nuovo = progressivo + 1;
+    await prefs.setInt('progressivo', nuovo);
+    await prefs.setInt('annoProgressivo', DateTime.now().year);
+    setState(() { progressivo = nuovo; });
+  }
+
+  Future<void> _caricaDatiDitta() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      ragioneSociale = prefs.getString('ragione') ?? '';
+      indirizzoDitta = prefs.getString('indirizzo') ?? '';
+      piva = prefs.getString('piva') ?? '';
+      telefonoDitta = prefs.getString('telefonoDitta') ?? '';
+      emailDitta = prefs.getString('email') ?? '';
+      citta = prefs.getString('citta') ?? '';
+    });
+    if (ragioneSociale.isEmpty) {
+      Future.delayed(Duration(milliseconds: 500), () => _apriImpostazioni());
+    }
+  }
+
+  Future<void> _salvaDatiDitta() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('ragione', ragioneSociale);
+    await prefs.setString('indirizzo', indirizzoDitta);
+    await prefs.setString('piva', piva);
+    await prefs.setString('telefonoDitta', telefonoDitta);
+    await prefs.setString('email', emailDitta);
+    await prefs.setString('citta', citta);
+  }
+
+  void _cancellaVoci() {
+    setState(() { righe.clear(); });
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Voci cancellate')));
+  }
+
+  void _nuovoPreventivo() {
+    setState(() {
+      righe.clear();
+      _nomeController.clear();
+      _telefonoController.clear();
+      _indirizzoController.clear();
+      clienteSelezionato = null;
+      aliquotaIva = 0.10;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Nuovo preventivo - pronto')));
+  }
+
+  void _apriImpostazioni() async {
+    final cRagione = TextEditingController(text: ragioneSociale);
+    final cIndirizzo = TextEditingController(text: indirizzoDitta);
+    final cPiva = TextEditingController(text: piva);
+    final cTel = TextEditingController(text: telefonoDitta);
+    final cEmail = TextEditingController(text: emailDitta);
+    final cCitta = TextEditingController(text: citta);
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: Text('Dati della tua Ditta'),
+        content: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text('Questi dati usciranno in automatico in tutti i PDF.', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+            SizedBox(height: 12),
+            TextField(controller: cRagione, decoration: InputDecoration(labelText: 'Ragione Sociale *')),
+            TextField(controller: cIndirizzo, decoration: InputDecoration(labelText: 'Indirizzo *')),
+            TextField(controller: cCitta, decoration: InputDecoration(labelText: 'Citta *')),
+            TextField(controller: cPiva, decoration: InputDecoration(labelText: 'P.IVA *')),
+            TextField(controller: cTel, decoration: InputDecoration(labelText: 'Telefono *')),
+            TextField(controller: cEmail, decoration: InputDecoration(labelText: 'Email *')),
+          ]),
+        ),
+        actions: [
+          if (ragioneSociale.isNotEmpty) TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Annulla')),
+          ElevatedButton(onPressed: () {
+            if (cRagione.text.trim().isEmpty) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Inserisci almeno la Ragione Sociale'))); return; }
+            setState(() { ragioneSociale = cRagione.text.trim(); indirizzoDitta = cIndirizzo.text.trim(); citta = cCitta.text.trim(); piva = cPiva.text.trim(); telefonoDitta = cTel.text.trim(); emailDitta = cEmail.text.trim(); });
+            _salvaDatiDitta();
+            Navigator.pop(ctx);
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Dati ditta salvati!')));
+          }, child: Text('Salva')),
+        ],
+      ),
+    );
+  }
+
+  double get subtotale => righe.fold(0, (s, r) => s + r.totale);
+  double get totale => subtotale;
+  double get iva => subtotale * aliquotaIva;
+  double get totaleConIva => subtotale + iva;
+  double get acconto => totaleConIva * 0.40;
+  double get saldo => totaleConIva - acconto;
+  int get percIva => (aliquotaIva * 100).toInt();
+
+  void _calcolaGabbia() async {
+    String tipo = 'Gabbia in ferro per travi fonde';
+    final lungController = TextEditingController(text: '5');
+    final nTondiController = TextEditingController(text: '4');
+    int diamTondi = 14;
+    int diamStaffe = 8;
+    final passoController = TextEditingController(text: '20');
+    final baseController = TextEditingController(text: '30');
+    final altezzaController = TextEditingController(text: '40');
+    final prezzoController = TextEditingController(text: '2.2');
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setD) => AlertDialog(
+          title: Text('Calcola Gabbia in Ferro'),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              DropdownButton<String>(isExpanded: true, value: tipo, items: ['Gabbia in ferro per fondazione','Gabbia in ferro per pilastri','Gabbia in ferro per travi fonde','Gabbia in ferro per travi piatte'].map((e) => DropdownMenuItem(value: e, child: Text(e, style: TextStyle(fontSize: 13)))).toList(), onChanged: (v) => setD(() => tipo = v!)),
+              TextField(controller: lungController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Lunghezza gabbia (m)')),
+              TextField(controller: nTondiController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'N. tondi longitudinali')),
+              Row(children: [Expanded(child: Text('Diametro tondi: ')), DropdownButton<int>(value: diamTondi, items: [10,12,14,16,18,20,22,25].map((d) => DropdownMenuItem(value: d, child: Text('Ø$d'))).toList(), onChanged: (v) => setD(() => diamTondi = v!))]),
+              Row(children: [Expanded(child: Text('Diametro staffe: ')), DropdownButton<int>(value: diamStaffe, items: [6,8,10,12].map((d) => DropdownMenuItem(value: d, child: Text('Ø$d'))).toList(), onChanged: (v) => setD(() => diamStaffe = v!))]),
+              TextField(controller: passoController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Distanza staffe (cm) - es. 20')),
+              TextField(controller: baseController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Base sezione (cm) - es. 30')),
+              TextField(controller: altezzaController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Altezza sezione (cm) - es. 40')),
+              TextField(controller: prezzoController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Prezzo Euro / kg')),
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Annulla')),
+            ElevatedButton(onPressed: () {
+              final lung = double.tryParse(lungController.text.replaceAll(',', '.')) ?? 0;
+              final nTondi = double.tryParse(nTondiController.text) ?? 4;
+              final passo = double.tryParse(passoController.text.replaceAll(',', '.')) ?? 20;
+              final base = double.tryParse(baseController.text.replaceAll(',', '.')) ?? 30;
+              final alt = double.tryParse(altezzaController.text.replaceAll(',', '.')) ?? 40;
+              final prezzo = double.tryParse(prezzoController.text.replaceAll(',', '.')) ?? 2.2;
+              final kgTondi = (nTondi * lung) * pesoFerro(diamTondi);
+              final nStaffe = (lung * 100 / passo).ceil() + 1;
+              final perimetroStaffa = ((base + alt) * 2) / 100 + 0.20;
+              final kgStaffe = (nStaffe * perimetroStaffa) * pesoFerro(diamStaffe);
+              final kgTotali = kgTondi + kgStaffe;
+              setState(() { righe.add(Riga(voce: Voce(nome: tipo, unita: 'kg', prezzo: prezzo), quantita: double.parse(kgTotali.toStringAsFixed(1)))); });
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$tipo: ${kgTotali.toStringAsFixed(1)} kg - $nStaffe staffe Ø$diamStaffe')));
+            }, child: Text('Calcola e Aggiungi')),
           ],
         ),
       ),
     );
+  }
 
+  void _aggiungiVoce() async {
+    Voce? selezionata = LISTINO[0];
+    final qtaController = TextEditingController(text: '1');
+    final prezzoController = TextEditingController(text: selezionata.prezzo.toStringAsFixed(0));
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setD) => AlertDialog(
+          title: Text('Aggiungi voce'),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            DropdownButton<Voce>(isExpanded: true, value: selezionata, items: LISTINO.map((v) => DropdownMenuItem(value: v, child: Text(v.nome))).toList(), onChanged: (v) { setD(() { selezionata = v; prezzoController.text = v!.prezzo.toStringAsFixed(0); }); }),
+            TextField(controller: qtaController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Quantita (${selezionata!.unita})')),
+            TextField(controller: prezzoController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Prezzo Euro / ${selezionata!.unita}')),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Annulla')),
+            ElevatedButton(onPressed: () {
+              final q = double.tryParse(qtaController.text.replaceAll(',', '.')) ?? 1;
+              final p = double.tryParse(prezzoController.text.replaceAll(',', '.')) ?? selezionata!.prezzo;
+              setState(() { righe.add(Riga(voce: Voce(nome: selezionata!.nome, unita: selezionata!.unita, prezzo: p), quantita: q)); });
+              Navigator.pop(ctx);
+            }, child: Text('Aggiungi')),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<pw.Document> _creaPdf() async {
+    final font = await PdfGoogleFonts.robotoRegular();
+    final fontBold = await PdfGoogleFonts.robotoBold();
+    final foroText = citta.isNotEmpty ? 'Foro competente: Tribunale di $citta.' : '';
+    final pdf = pw.Document();
+    pdf.addPage(pw.MultiPage(
+      theme: pw.ThemeData.withFont(base: font, bold: fontBold),
+      build: (ctx) => [
+        pw.Text(ragioneSociale.toUpperCase(), style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold)),
+        if (indirizzoDitta.isNotEmpty || citta.isNotEmpty) pw.Text('$indirizzoDitta, $citta', style: pw.TextStyle(fontSize: 10)),
+        if (piva.isNotEmpty) pw.Text('P.IVA $piva', style: pw.TextStyle(fontSize: 10)),
+        if (telefonoDitta.isNotEmpty || emailDitta.isNotEmpty) pw.Text('$telefonoDitta - $emailDitta', style: pw.TextStyle(fontSize: 10)),
+        pw.Divider(),
+        pw.SizedBox(height: 8),
+        pw.Text('PREVENTIVO N. $numero', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
+        pw.SizedBox(height: 12),
+        pw.Text('Cliente: ${_nomeController.text}'),
+        pw.Text('Telefono: ${_telefonoController.text}'),
+        pw.Text('Indirizzo lavoro: ${_indirizzoController.text}'),
+        pw.SizedBox(height: 16),
+        pw.Table.fromTextArray(headers: ['Voce', 'Qta', 'Prezzo', 'Totale'], data: righe.map((r) => [r.voce.nome, '${r.quantita.toStringAsFixed(2)} ${r.voce.unita}', '${r.voce.prezzo.toStringAsFixed(2)} Euro', '${r.totale.toStringAsFixed(2)} Euro']).toList()),
+        pw.SizedBox(height: 16),
+        pw.Text('SUBTOTALE: ${subtotale.toStringAsFixed(2)} Euro', style: pw.TextStyle(fontSize: 13)),
+        pw.Text('IVA $percIva%: ${iva.toStringAsFixed(2)} Euro', style: pw.TextStyle(fontSize: 13)),
+        pw.Text('TOTALE IVA INCLUSA: ${totaleConIva.toStringAsFixed(2)} Euro', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
+        pw.Text('ACCONTO 40% DA VERSARE: ${acconto.toStringAsFixed(2)} Euro'),
+        pw.Text('SALDO A LAVORO FINITO: ${saldo.toStringAsFixed(2)} Euro'),
+        pw.SizedBox(height: 20),
+        pw.Divider(),
+        pw.Text('NOTE LEGALI E CONDIZIONI', style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
+        pw.SizedBox(height: 6),
+        pw.Text('1. Il presente preventivo ha validita di 30 giorni dalla data di emissione.', style: pw.TextStyle(fontSize: 9)),
+        pw.Text('2. I prezzi indicati sono IVA inclusa al $percIva%, salvo diversa indicazione.', style: pw.TextStyle(fontSize: 9)),
+        pw.Text('3. Per conferma dell\'ordine e richiesto il versamento di un acconto pari al 40% dell\'importo totale IVA inclusa.', style: pw.TextStyle(fontSize: 9)),
+        pw.Text('4. Il saldo dovra essere corrisposto a lavoro finito, prima della consegna.', style: pw.TextStyle(fontSize: 9)),
+        pw.Text('5. Eventuali varianti, modifiche o lavori extra richiesti in corso d\'opera saranno conteggiati a parte e dovranno essere approvati per iscritto.', style: pw.TextStyle(fontSize: 9)),
+        pw.Text('6. I materiali sono quelli indicati nel preventivo. Eventuali sostituzioni saranno concordate con il cliente.', style: pw.TextStyle(fontSize: 9)),
+        pw.Text('7. Il presente documento non costituisce fattura. La fattura verra emessa al pagamento secondo normativa vigente.', style: pw.TextStyle(fontSize: 9)),
+        if (foroText.isNotEmpty) pw.Text('8. $foroText', style: pw.TextStyle(fontSize: 9)),
+        pw.SizedBox(height: 16),
+        pw.Text('Firma per accettazione: ___________________________', style: pw.TextStyle(fontSize: 10)),
+        pw.SizedBox(height: 8),
+        pw.Text('Data: ____ / ____ / ________', style: pw.TextStyle(fontSize: 10)),
+        pw.SizedBox(height: 16),
+        pw.Text('Grazie per aver scelto $ragioneSociale.', style: pw.TextStyle(fontSize: 10)),
+      ],
+    ));
+    return pdf;
+  }
+
+  Future<void> _condividiWhatsApp() async {
+    if (righe.isEmpty) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Aggiungi almeno una voce'))); return; }
+    if (ragioneSociale.isEmpty) { _apriImpostazioni(); return; }
+    await _salvaClienteCorrente(); // <-- salva il cliente
+    final numeroCorrente = numero;
+    final pdf = await _creaPdf();
     final dir = await getTemporaryDirectory();
-    final file = File('${dir.path}/$numeroFormattato.pdf');
+    final file = File('${dir.path}/PREV-$numeroCorrente.pdf');
     await file.writeAsBytes(await pdf.save());
-
-    // Condividi su WhatsApp / altro
-    await Share.shareXFiles([XFile(file.path)],
-        text: 'Preventivo N. $numeroFormattato - Totale ${totale.toStringAsFixed(2)} Euro');
-
-    // SOLO DOPO L'INVIO: avanza il numero e pulisce
-    await _salvaENumeroAvanti();
-    _nuovoPreventivo();
+    await Share.shareXFiles([XFile(file.path)], text: 'Ecco il tuo preventivo $ragioneSociale - N. $numeroCorrente\nTotale IVA inclusa ($percIva%): ${totaleConIva.toStringAsFixed(2)} Euro');
+    await _aumentaProgressivo();
+    setState(() { righe.clear(); _nomeController.clear(); _telefonoController.clear(); _indirizzoController.clear(); clienteSelezionato = null; });
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Preventivo $numeroCorrente inviato. Cliente salvato! Prossimo: $numero')));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('EdilBlack - $numeroFormattato')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(12),
+      appBar: AppBar(
+        title: Text(ragioneSociale.isEmpty ? 'Preventivo $numero' : '$ragioneSociale - $numero'),
+        backgroundColor: Colors.brown[800],
+        actions: [
+          IconButton(icon: Icon(Icons.refresh), onPressed: _nuovoPreventivo, tooltip: 'Nuovo - Refresh'),
+          IconButton(icon: Icon(Icons.delete), onPressed: _cancellaVoci, tooltip: 'Cancella voci'),
+          IconButton(icon: Icon(Icons.settings), onPressed: _apriImpostazioni, tooltip: 'Dati Ditta'),
+        ],
+      ),
+      body: Padding(
+        padding: EdgeInsets.all(12),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Preventivo N. $numeroFormattato',
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 10),
-
-            DropdownButton<String>(
-              isExpanded: true,
-              hint: Text('Seleziona cliente salvato (${clientiSalvati.length})'),
-              items: clientiSalvati
-                  .map((c) => DropdownMenuItem(value: c['nome'], child: Text(c['nome']!)))
-                  .toList(),
-              onChanged: (val) {
-                var c = clientiSalvati.firstWhere((e) => e['nome'] == val);
-                setState(() {
-                  nomeCtrl.text = c['nome']!;
-                  telCtrl.text = c['telefono']!;
-                  indCtrl.text = c['indirizzo']!;
-                });
-              },
-            ),
-            TextField(controller: nomeCtrl, decoration: const InputDecoration(labelText: 'Nome cliente')),
-            TextField(controller: telCtrl, decoration: const InputDecoration(labelText: 'Telefono')),
-            TextField(controller: indCtrl, decoration: const InputDecoration(labelText: 'Indirizzo lavoro')),
-            const SizedBox(height: 16),
-
-            Row(
-              children: [
-                Expanded(child: ElevatedButton(onPressed: _aggiungiVoce, child: const Text('Aggiungi voce'))),
-                const SizedBox(width: 8),
-                Expanded(child: ElevatedButton(onPressed: _nuovoPreventivo, child: const Text('Nuovo / Refresh'))),
-              ],
-            ),
-            const SizedBox(height: 16),
-            const Text('LAVORAZIONI:', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-
-            // FIX 2 - COME WOOD PRO: NIENTE ALTEZZA FISSA
-            // E' una Column dentro SingleChildScrollView.
-            // Ogni voce che aggiungi fa ALLUNGARE la pagina.
-            // 1 voce = corto, 22 voci = lunghissimo, scorri e vedi tutto.
-            Column(
-              children: voci.asMap().entries.map((entry) {
-                int i = entry.key;
-                Voce v = entry.value;
-                return Card(
-                  margin: const EdgeInsets.symmetric(vertical: 6),
-                  elevation: 2,
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      children: [
-                        TextField(
-                          decoration: InputDecoration(labelText: 'Lavorazione ${i + 1}'),
-                          controller: TextEditingController(text: v.descrizione),
-                          onChanged: (val) => v.descrizione = val,
-                        ),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: TextField(
-                                decoration: const InputDecoration(labelText: 'Qta'),
-                                keyboardType: TextInputType.number,
-                                controller: TextEditingController(text: v.quantita.toString()),
-                                onChanged: (val) => setState(() => v.quantita = double.tryParse(val) ?? 1),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: TextField(
-                                decoration: const InputDecoration(labelText: 'Prezzo'),
-                                keyboardType: TextInputType.number,
-                                controller: TextEditingController(text: v.prezzo.toString()),
-                                onChanged: (val) => setState(() => v.prezzo = double.tryParse(val) ?? 0),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Text('${v.totale.toStringAsFixed(2)} €',
-                                style: const TextStyle(fontWeight: FontWeight.bold)),
-                            IconButton(
-                              icon: const Icon(Icons.delete, color: Colors.red),
-                              onPressed: () => setState(() => voci.removeAt(i)),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-
-            if (voci.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 16),
-                child: Text('Nessuna lavorazione. Premi "Aggiungi voce" per iniziare.',
-                    style: TextStyle(color: Colors.grey)),
-              ),
-
-            const SizedBox(height: 16),
-            Text('Subtotale: ${subtotale.toStringAsFixed(2)} Euro'),
-            Text('IVA $iva%: ${(totale - subtotale).toStringAsFixed(2)} Euro'),
-            Text('TOTALE: ${totale.toStringAsFixed(2)} Euro',
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 16),
-
-            SizedBox(
-              width: double.infinity,
-              height: 55,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                onPressed: _condividiWhatsApp,
-                child: const Text('Condividi su WhatsApp',
-                    style: TextStyle(fontSize: 18, color: Colors.white)),
-              ),
-            ),
-            const SizedBox(height: 20),
+            if (ragioneSociale.isEmpty) Container(width: double.infinity, padding: EdgeInsets.all(10), color: Colors.orange[100], child: Text('Prima volta? Premi l\'ingranaggio in alto e inserisci i dati della tua ditta.', style: TextStyle(fontSize: 13))),
+            Text('Preventivo N. $numero', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.brown[800])),
+            SizedBox(height: 6),
+            // CLIENTI SALVATI
+            if (clienti.isNotEmpty) Container(padding: EdgeInsets.symmetric(horizontal: 12), decoration: BoxDecoration(color: Colors.blue[50], borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.blue[200]!)), child: DropdownButton<Cliente>(isExpanded: true, hint: Text('👤 Seleziona cliente salvato (${clienti.length})'), value: clienteSelezionato, items: clienti.map((c) => DropdownMenuItem(value: c, child: Text(c.nome))).toList(), onChanged: _selezionaCliente)),
+            if (clienti.isNotEmpty) SizedBox(height: 6),
+            TextField(controller: _nomeController, decoration: InputDecoration(labelText: 'Nome cliente')),
+            TextField(controller: _telefonoController, decoration: InputDecoration(labelText: 'Telefono')),
+            TextField(controller: _indirizzoController, decoration: InputDecoration(labelText: 'Indirizzo lavoro')),
+            if (clienteSelezionato != null) TextButton.icon(onPressed: () => _eliminaCliente(clienteSelezionato!), icon: Icon(Icons.delete, size: 16, color: Colors.red), label: Text('Elimina questo cliente dai salvati', style: TextStyle(color: Colors.red, fontSize: 12))),
+            SizedBox(height: 10),
+            Container(padding: EdgeInsets.symmetric(horizontal: 12, vertical: 4), decoration: BoxDecoration(color: Colors.brown[50], borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.brown[200]!)), child: Row(children: [
+              Text('IVA: ', style: TextStyle(fontWeight: FontWeight.bold)),
+              DropdownButton<double>(value: aliquotaIva, items: [0.04, 0.10, 0.22].map((v) => DropdownMenuItem(value: v, child: Text('${(v*100).toInt()}%'))).toList(), onChanged: (v) => setState(() => aliquotaIva = v!)),
+              SizedBox(width: 8),
+              Text('(4% prima casa, 10% ristr., 22% normale)', style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+            ])),
+            SizedBox(height: 10),
+            Row(children: [
+              Expanded(child: ElevatedButton.icon(onPressed: _aggiungiVoce, icon: Icon(Icons.add), label: Text('Aggiungi voce'))),
+              SizedBox(width: 8),
+              Expanded(child: ElevatedButton.icon(onPressed: _calcolaGabbia, icon: Icon(Icons.calculate), label: Text('Calcola Gabbia'), style: ElevatedButton.styleFrom(backgroundColor: Colors.orange[800]))),
+            ]),
+            SizedBox(height: 8),
+            Row(children: [
+              Expanded(child: OutlinedButton.icon(onPressed: _nuovoPreventivo, icon: Icon(Icons.refresh, size: 18), label: Text('Refresh / Nuovo'))),
+              SizedBox(width: 8),
+              Expanded(child: OutlinedButton.icon(onPressed: _cancellaVoci, icon: Icon(Icons.delete, size: 18), label: Text('Cancella voci'), style: OutlinedButton.styleFrom(foregroundColor: Colors.red))),
+            ]),
+            Expanded(child: ListView.builder(itemCount: righe.length, itemBuilder: (ctx, i) {
+              final r = righe[i];
+              return ListTile(title: Text(r.voce.nome), subtitle: Text('${r.quantita} ${r.voce.unita} x ${r.voce.prezzo} Euro'), trailing: Row(mainAxisSize: MainAxisSize.min, children: [Text('${r.totale.toStringAsFixed(2)} Euro', style: TextStyle(fontWeight: FontWeight.bold)), IconButton(icon: Icon(Icons.delete, color: Colors.red), onPressed: () => setState(() => righe.removeAt(i)))]));
+            })),
+            Divider(),
+            Text('SUBTOTALE: ${subtotale.toStringAsFixed(2)} Euro', style: TextStyle(fontSize: 14)),
+            Text('IVA $percIva%: ${iva.toStringAsFixed(2)} Euro', style: TextStyle(fontSize: 14)),
+            Text('TOTALE IVA INCLUSA: ${totaleConIva.toStringAsFixed(2)} Euro', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            Text('ACCONTO 40%: ${acconto.toStringAsFixed(2)} Euro'),
+            Text('SALDO: ${saldo.toStringAsFixed(2)} Euro'),
+            SizedBox(height: 10),
+            SizedBox(width: double.infinity, child: ElevatedButton.icon(onPressed: _condividiWhatsApp, icon: Icon(Icons.share), label: Text('Condividi su WhatsApp'), style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: EdgeInsets.symmetric(vertical: 14)))),
           ],
         ),
       ),
