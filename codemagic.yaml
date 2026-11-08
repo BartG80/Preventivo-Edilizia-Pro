@@ -7,14 +7,13 @@ workflows:
       xcode: latest
       cocoapods: default
     scripts:
-      - name: Ricrea struttura se manca
+      - name: Proteggi codice e ricrea android
         script: |
           ls -la
-          # se main.dart è nella root, spostalo in lib/
-          mkdir -p lib
-          if [ -f main.dart ]; then cp main.dart lib/main.dart; fi
-          # se manca android, ricreala
+          ls -la lib || true
+          cp lib/main.dart /tmp/main_backup.dart
           if [ ! -d android ]; then flutter create . --platforms=android --project-name preventivo_edile; fi
+          cp /tmp/main_backup.dart lib/main.dart
           flutter pub get
       - name: Build APK
         script: |
