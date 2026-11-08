@@ -93,13 +93,11 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
   double aliquotaIva = 0.10;
   List<Cliente> clienti = [];
   Cliente? clienteSelezionato;
-
   int progressivo = 1;
   String get numero {
     final anno = DateTime.now().year;
     return '$anno-${progressivo.toString().padLeft(3, '0')}';
   }
-
   String ragioneSociale = '';
   String indirizzoDitta = '';
   String piva = '';
@@ -115,7 +113,6 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
     _caricaClienti();
   }
 
-  // --- CLIENTI SALVATI ---
   Future<void> _caricaClienti() async {
     final prefs = await SharedPreferences.getInstance();
     final str = prefs.getString('clienti') ?? '[]';
@@ -150,6 +147,16 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
     });
   }
 
+  // NUOVO: pulisce tutto per scrivere un cliente nuovo
+  void _nuovoCliente() {
+    setState(() {
+      clienteSelezionato = null;
+      _nomeController.clear();
+      _telefonoController.clear();
+      _indirizzoController.clear();
+    });
+  }
+
   void _eliminaCliente(Cliente c) async {
     clienti.removeWhere((x) => x.nome == c.nome);
     await _salvaClienti();
@@ -159,11 +166,15 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
 
   Future<void> _caricaProgressivo() async {
     final prefs = await SharedPreferences.getInstance();
-    final annoSalvato = prefs.getInt('annoProgressivo') ?? DateTime.now().year;
     final annoOra = DateTime.now().year;
-    setState(() {
-      if (annoSalvato != annoOra) { progressivo = 1; } else { progressivo = prefs.getInt('progressivo') ?? 1; }
-    });
+    final annoSalvato = prefs.getInt('annoProgressivo');
+    if (annoSalvato == null || annoSalvato != annoOra) {
+      await prefs.setInt('progressivo', 1);
+      await prefs.setInt('annoProgressivo', annoOra);
+      setState(() { progressivo = 1; });
+    } else {
+      setState(() { progressivo = prefs.getInt('progressivo') ?? 1; });
+    }
   }
 
   Future<void> _aumentaProgressivo() async {
@@ -201,7 +212,7 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
 
   void _cancellaVoci() {
     setState(() { righe.clear(); });
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Voci cancellate')));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Voci cancellate - Resti sul $numero')));
   }
 
   void _nuovoPreventivo() {
@@ -213,7 +224,7 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
       clienteSelezionato = null;
       aliquotaIva = 0.10;
     });
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Nuovo preventivo - pronto')));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Pulito - Resti sul $numero')));
   }
 
   void _apriImpostazioni() async {
@@ -316,28 +327,43 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
 
   void _aggiungiVoce() async {
     Voce? selezionata = LISTINO[0];
-    final qtaController = TextEditingController(text: '1');
+    final qtaController = TextEditingController(text: '');
     final prezzoController = TextEditingController(text: selezionata.prezzo.toStringAsFixed(0));
+    String qtaTesto = '';
+    String prezzoTesto = selezionata.prezzo.toStringAsFixed(0);
     await showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setD) => AlertDialog(
-          title: Text('Aggiungi voce'),
-          content: Column(mainAxisSize: MainAxisSize.min, children: [
-            DropdownButton<Voce>(isExpanded: true, value: selezionata, items: LISTINO.map((v) => DropdownMenuItem(value: v, child: Text(v.nome))).toList(), onChanged: (v) { setD(() { selezionata = v; prezzoController.text = v!.prezzo.toStringAsFixed(0); }); }),
-            TextField(controller: qtaController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Quantita (${selezionata!.unita})')),
-            TextField(controller: prezzoController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Prezzo Euro / ${selezionata!.unita}')),
-          ]),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Annulla')),
-            ElevatedButton(onPressed: () {
-              final q = double.tryParse(qtaController.text.replaceAll(',', '.')) ?? 1;
-              final p = double.tryParse(prezzoController.text.replaceAll(',', '.')) ?? selezionata!.prezzo;
-              setState(() { righe.add(Riga(voce: Voce(nome: selezionata!.nome, unita: selezionata!.unita, prezzo: p), quantita: q)); });
-              Navigator.pop(ctx);
-            }, child: Text('Aggiungi')),
-          ],
-        ),
+        builder: (ctx, setD) {
+          final q = double.tryParse(qtaTesto.replaceAll(',', '.')) ?? 0;
+          final p = double.tryParse(prezzoTesto.replaceAll(',', '.')) ?? 0;
+          final tot = q * p;
+          return AlertDialog(
+            title: Text('Aggiungi voce'),
+            content: SingleChildScrollView(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                DropdownButton<Voce>(isExpanded: true, value: selezionata, items: LISTINO.map((v) => DropdownMenuItem(value: v, child: Text(v.nome))).toList(), onChanged: (v) { setD(() { selezionata = v; prezzoTesto = v!.prezzo.toStringAsFixed(0); prezzoController.text = prezzoTesto; }); }),
+                SizedBox(height: 12),
+                TextField(controller: qtaController, autofocus: true, keyboardType: TextInputType.numberWithOptions(decimal: true), onChanged: (v) => setD(() => qtaTesto = v), decoration: InputDecoration(labelText: 'Quantita (${selezionata!.unita})', hintText: 'Scrivi qui, es. 50', border: OutlineInputBorder())),
+                SizedBox(height: 10),
+                TextField(controller: prezzoController, keyboardType: TextInputType.numberWithOptions(decimal: true), onChanged: (v) => setD(() => prezzoTesto = v), decoration: InputDecoration(labelText: 'Prezzo Euro / ${selezionata!.unita}', border: OutlineInputBorder())),
+                SizedBox(height: 12),
+                Container(width: double.infinity, padding: EdgeInsets.all(12), color: Colors.green[50], child: Text('TOTALE: $q x $p = ${tot.toStringAsFixed(2)} Euro', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16), textAlign: TextAlign.center)),
+              ]),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Annulla')),
+              ElevatedButton(onPressed: () {
+                final qq = double.tryParse(qtaTesto.replaceAll(',', '.')) ?? 0;
+                if (qq <= 0) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Scrivi la quantità!'))); return; }
+                final pp = double.tryParse(prezzoTesto.replaceAll(',', '.')) ?? selezionata!.prezzo;
+                setState(() { righe.add(Riga(voce: Voce(nome: selezionata!.nome, unita: selezionata!.unita, prezzo: pp), quantita: qq)); });
+                Navigator.pop(ctx);
+              }, child: Text('Aggiungi')),
+            ],
+          );
+        },
       ),
     );
   }
@@ -395,16 +421,16 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
   Future<void> _condividiWhatsApp() async {
     if (righe.isEmpty) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Aggiungi almeno una voce'))); return; }
     if (ragioneSociale.isEmpty) { _apriImpostazioni(); return; }
-    await _salvaClienteCorrente(); // <-- salva il cliente
+    await _salvaClienteCorrente();
     final numeroCorrente = numero;
     final pdf = await _creaPdf();
     final dir = await getTemporaryDirectory();
     final file = File('${dir.path}/PREV-$numeroCorrente.pdf');
     await file.writeAsBytes(await pdf.save());
-    await Share.shareXFiles([XFile(file.path)], text: 'Ecco il tuo preventivo $ragioneSociale - N. $numeroCorrente\nTotale IVA inclusa ($percIva%): ${totaleConIva.toStringAsFixed(2)} Euro');
     await _aumentaProgressivo();
+    await Share.shareXFiles([XFile(file.path)], text: 'Ecco il tuo preventivo $ragioneSociale - N. $numeroCorrente\nTotale IVA inclusa ($percIva%): ${totaleConIva.toStringAsFixed(2)} Euro');
     setState(() { righe.clear(); _nomeController.clear(); _telefonoController.clear(); _indirizzoController.clear(); clienteSelezionato = null; });
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Preventivo $numeroCorrente inviato. Cliente salvato! Prossimo: $numero')));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Preventivo $numeroCorrente inviato. Prossimo: $numero')));
   }
 
   @override
@@ -419,53 +445,117 @@ class _PreventivoEdileState extends State<PreventivoEdile> {
           IconButton(icon: Icon(Icons.settings), onPressed: _apriImpostazioni, tooltip: 'Dati Ditta'),
         ],
       ),
-      body: Padding(
-        padding: EdgeInsets.all(12),
-        child: Column(
-          children: [
-            if (ragioneSociale.isEmpty) Container(width: double.infinity, padding: EdgeInsets.all(10), color: Colors.orange[100], child: Text('Prima volta? Premi l\'ingranaggio in alto e inserisci i dati della tua ditta.', style: TextStyle(fontSize: 13))),
-            Text('Preventivo N. $numero', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.brown[800])),
-            SizedBox(height: 6),
-            // CLIENTI SALVATI
-            if (clienti.isNotEmpty) Container(padding: EdgeInsets.symmetric(horizontal: 12), decoration: BoxDecoration(color: Colors.blue[50], borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.blue[200]!)), child: DropdownButton<Cliente>(isExpanded: true, hint: Text('👤 Seleziona cliente salvato (${clienti.length})'), value: clienteSelezionato, items: clienti.map((c) => DropdownMenuItem(value: c, child: Text(c.nome))).toList(), onChanged: _selezionaCliente)),
-            if (clienti.isNotEmpty) SizedBox(height: 6),
-            TextField(controller: _nomeController, decoration: InputDecoration(labelText: 'Nome cliente')),
-            TextField(controller: _telefonoController, decoration: InputDecoration(labelText: 'Telefono')),
-            TextField(controller: _indirizzoController, decoration: InputDecoration(labelText: 'Indirizzo lavoro')),
-            if (clienteSelezionato != null) TextButton.icon(onPressed: () => _eliminaCliente(clienteSelezionato!), icon: Icon(Icons.delete, size: 16, color: Colors.red), label: Text('Elimina questo cliente dai salvati', style: TextStyle(color: Colors.red, fontSize: 12))),
-            SizedBox(height: 10),
-            Container(padding: EdgeInsets.symmetric(horizontal: 12, vertical: 4), decoration: BoxDecoration(color: Colors.brown[50], borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.brown[200]!)), child: Row(children: [
-              Text('IVA: ', style: TextStyle(fontWeight: FontWeight.bold)),
-              DropdownButton<double>(value: aliquotaIva, items: [0.04, 0.10, 0.22].map((v) => DropdownMenuItem(value: v, child: Text('${(v*100).toInt()}%'))).toList(), onChanged: (v) => setState(() => aliquotaIva = v!)),
-              SizedBox(width: 8),
-              Text('(4% prima casa, 10% ristr., 22% normale)', style: TextStyle(fontSize: 11, color: Colors.grey[600])),
-            ])),
-            SizedBox(height: 10),
-            Row(children: [
-              Expanded(child: ElevatedButton.icon(onPressed: _aggiungiVoce, icon: Icon(Icons.add), label: Text('Aggiungi voce'))),
-              SizedBox(width: 8),
-              Expanded(child: ElevatedButton.icon(onPressed: _calcolaGabbia, icon: Icon(Icons.calculate), label: Text('Calcola Gabbia'), style: ElevatedButton.styleFrom(backgroundColor: Colors.orange[800]))),
-            ]),
-            SizedBox(height: 8),
-            Row(children: [
-              Expanded(child: OutlinedButton.icon(onPressed: _nuovoPreventivo, icon: Icon(Icons.refresh, size: 18), label: Text('Refresh / Nuovo'))),
-              SizedBox(width: 8),
-              Expanded(child: OutlinedButton.icon(onPressed: _cancellaVoci, icon: Icon(Icons.delete, size: 18), label: Text('Cancella voci'), style: OutlinedButton.styleFrom(foregroundColor: Colors.red))),
-            ]),
-            Expanded(child: ListView.builder(itemCount: righe.length, itemBuilder: (ctx, i) {
-              final r = righe[i];
-              return ListTile(title: Text(r.voce.nome), subtitle: Text('${r.quantita} ${r.voce.unita} x ${r.voce.prezzo} Euro'), trailing: Row(mainAxisSize: MainAxisSize.min, children: [Text('${r.totale.toStringAsFixed(2)} Euro', style: TextStyle(fontWeight: FontWeight.bold)), IconButton(icon: Icon(Icons.delete, color: Colors.red), onPressed: () => setState(() => righe.removeAt(i)))]));
-            })),
-            Divider(),
-            Text('SUBTOTALE: ${subtotale.toStringAsFixed(2)} Euro', style: TextStyle(fontSize: 14)),
-            Text('IVA $percIva%: ${iva.toStringAsFixed(2)} Euro', style: TextStyle(fontSize: 14)),
-            Text('TOTALE IVA INCLUSA: ${totaleConIva.toStringAsFixed(2)} Euro', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-            Text('ACCONTO 40%: ${acconto.toStringAsFixed(2)} Euro'),
-            Text('SALDO: ${saldo.toStringAsFixed(2)} Euro'),
-            SizedBox(height: 10),
-            SizedBox(width: double.infinity, child: ElevatedButton.icon(onPressed: _condividiWhatsApp, icon: Icon(Icons.share), label: Text('Condividi su WhatsApp'), style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: EdgeInsets.symmetric(vertical: 14)))),
-          ],
-        ),
+      body: Column(
+        children: [
+          // PARTE SOPRA - FISSA DI POSIZIONE, MA CAMPI SEMPRE MODIFICABILI
+          Container(
+            padding: EdgeInsets.fromLTRB(12, 12, 12, 8),
+            child: Column(
+              children: [
+                if (ragioneSociale.isEmpty) Container(width: double.infinity, padding: EdgeInsets.all(10), color: Colors.orange[100], child: Text('Prima volta? Premi l\'ingranaggio in alto e inserisci i dati della tua ditta.', style: TextStyle(fontSize: 13))),
+                Text('Preventivo N. $numero', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.brown[800])),
+                SizedBox(height: 6),
+                if (clienti.isNotEmpty) Container(padding: EdgeInsets.symmetric(horizontal: 12), decoration: BoxDecoration(color: Colors.blue[50], borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.blue[200]!)), child: DropdownButton<Cliente>(isExpanded: true, hint: Text('👤 Seleziona cliente salvato (${clienti.length})'), value: clienteSelezionato, items: clienti.map((c) => DropdownMenuItem(value: c, child: Text(c.nome))).toList(), onChanged: _selezionaCliente)),
+                if (clienti.isNotEmpty) SizedBox(height: 6),
+                // NOME CLIENTE - SI PUO' SEMPRE CAMBIARE
+                // Se scrivi, si sblocca da solo dal cliente selezionato
+                TextField(
+                  controller: _nomeController,
+                  decoration: InputDecoration(labelText: 'Nome cliente - tocca qui per cambiare', suffixIcon: Icon(Icons.edit)),
+                  onChanged: (v) {
+                    // Se stavi modificando il nome di un cliente salvato, diventa un cliente nuovo
+                    if (clienteSelezionato != null && v != clienteSelezionato!.nome) {
+                      setState(() { clienteSelezionato = null; });
+                    }
+                  },
+                  onTap: () {
+                    // Quando tocchi il campo, non deve restare bloccato sul vecchio cliente
+                    if (clienteSelezionato != null) {
+                      setState(() { clienteSelezionato = null; });
+                    }
+                  },
+                ),
+                TextField(controller: _telefonoController, decoration: InputDecoration(labelText: 'Telefono - tocca qui per cambiare', suffixIcon: Icon(Icons.edit))),
+                TextField(controller: _indirizzoController, decoration: InputDecoration(labelText: 'Indirizzo lavoro - tocca qui per cambiare', suffixIcon: Icon(Icons.edit))),
+                Row(children: [
+                  TextButton.icon(onPressed: _nuovoCliente, icon: Icon(Icons.person_add, size: 16), label: Text('Cliente nuovo / cambia nome', style: TextStyle(fontSize: 12))),
+                  Spacer(),
+                  if (clienteSelezionato != null) TextButton.icon(onPressed: () => _eliminaCliente(clienteSelezionato!), icon: Icon(Icons.delete, size: 16, color: Colors.red), label: Text('Elimina', style: TextStyle(color: Colors.red, fontSize: 12))),
+                ]),
+                SizedBox(height: 6),
+                Container(padding: EdgeInsets.symmetric(horizontal: 12, vertical: 4), decoration: BoxDecoration(color: Colors.brown[50], borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.brown[200]!)), child: Row(children: [
+                  Text('IVA: ', style: TextStyle(fontWeight: FontWeight.bold)),
+                  DropdownButton<double>(value: aliquotaIva, items: [0.04, 0.10, 0.22].map((v) => DropdownMenuItem(value: v, child: Text('${(v*100).toInt()}%'))).toList(), onChanged: (v) => setState(() => aliquotaIva = v!)),
+                  SizedBox(width: 8),
+                  Text('(4% prima casa, 10% ristr., 22% normale)', style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+                ])),
+                SizedBox(height: 10),
+                Row(children: [
+                  Expanded(child: ElevatedButton.icon(onPressed: _aggiungiVoce, icon: Icon(Icons.add), label: Text('Aggiungi voce'))),
+                  SizedBox(width: 8),
+                  Expanded(child: ElevatedButton.icon(onPressed: _calcolaGabbia, icon: Icon(Icons.calculate), label: Text('Calcola Gabbia'), style: ElevatedButton.styleFrom(backgroundColor: Colors.orange[800]))),
+                ]),
+                SizedBox(height: 8),
+                Row(children: [
+                  Expanded(child: OutlinedButton.icon(onPressed: _nuovoPreventivo, icon: Icon(Icons.refresh, size: 18), label: Text('Refresh / Nuovo'))),
+                  SizedBox(width: 8),
+                  Expanded(child: OutlinedButton.icon(onPressed: _cancellaVoci, icon: Icon(Icons.delete, size: 18), label: Text('Cancella voci'), style: OutlinedButton.styleFrom(foregroundColor: Colors.red))),
+                ]),
+              ],
+            ),
+          ),
+          Divider(height: 1),
+          // PARTE SOTTO - SI ALLUNGA
+          Expanded(
+            child: SingleChildScrollView(
+              padding: EdgeInsets.all(12),
+              child: Column(
+                children: [
+                  Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.all(8),
+                    decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.grey[400]!, width: 1.5)),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('LAVORAZIONI (${righe.length})', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.brown[800])),
+                        Divider(),
+                        if (righe.isEmpty) Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Center(child: Text('Ancora nessuna voce.\nPremi Aggiungi voce.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey[600])))),
+                        ...righe.asMap().entries.map((entry) {
+                          final i = entry.key;
+                          final r = entry.value;
+                          return Container(
+                            margin: EdgeInsets.only(bottom: 6),
+                            padding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey[300]!)),
+                            child: Row(children: [
+                              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                Text(r.voce.nome, style: TextStyle(fontWeight: FontWeight.bold)),
+                                Text('${r.quantita} ${r.voce.unita} x ${r.voce.prezzo} Euro', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                              ])),
+                              Text('${r.totale.toStringAsFixed(2)} Euro', style: TextStyle(fontWeight: FontWeight.bold)),
+                              IconButton(icon: Icon(Icons.delete, color: Colors.red, size: 20), onPressed: () => setState(() => righe.removeAt(i))),
+                            ]),
+                          );
+                        }).toList(),
+                      ],
+                    ),
+                  ),
+                  SizedBox(height: 12),
+                  Divider(),
+                  Text('SUBTOTALE: ${subtotale.toStringAsFixed(2)} Euro', style: TextStyle(fontSize: 14)),
+                  Text('IVA $percIva%: ${iva.toStringAsFixed(2)} Euro', style: TextStyle(fontSize: 14)),
+                  Text('TOTALE IVA INCLUSA: ${totaleConIva.toStringAsFixed(2)} Euro', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                  Text('ACCONTO 40%: ${acconto.toStringAsFixed(2)} Euro'),
+                  Text('SALDO: ${saldo.toStringAsFixed(2)} Euro'),
+                  SizedBox(height: 10),
+                  SizedBox(width: double.infinity, child: ElevatedButton.icon(onPressed: _condividiWhatsApp, icon: Icon(Icons.share), label: Text('Condividi su WhatsApp'), style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: EdgeInsets.symmetric(vertical: 14)))),
+                  SizedBox(height: 20),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
