@@ -1,22 +1,30 @@
 workflows:
   android-workflow:
     name: Android APK
+    instance_type: mac_mini_m1
     max_build_duration: 60
     environment:
       flutter: stable
       xcode: latest
       cocoapods: default
     scripts:
-      - name: Proteggi codice e ricrea android
+      - name: Ricrea cartella android
         script: |
+          set -ex
+          pwd
           ls -la
-          ls -la lib || true
           cp lib/main.dart /tmp/main_backup.dart
-          if [ ! -d android ]; then flutter create . --platforms=android --project-name preventivo_edile; fi
+          rm -rf android
+          flutter create . --platforms=android --project-name preventivo_edile --org com.preventivo.edile
+          echo "--- DOPO CREATE ---"
+          ls -la android
+          ls -la android/app
           cp /tmp/main_backup.dart lib/main.dart
           flutter pub get
       - name: Build APK
         script: |
+          set -ex
+          ls -la android
           flutter build apk --release
     artifacts:
       - build/app/outputs/flutter-apk/app-release.apk
